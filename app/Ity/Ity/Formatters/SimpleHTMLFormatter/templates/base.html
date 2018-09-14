@@ -1,0 +1,31 @@
+{% block content %}
+{# "Tags, Tokens, and S" Output #}
+{% if
+    tags is not none and
+    tags|length == 2 and
+    tags[1]|length > 0 and
+    tokens is not none and
+    tokens|length > 0 and
+    s is not none and
+    s|length > 0
+%}
+    {% include "_tags_tokens_s.html" %}
+{# "Tokens and S" Output #}
+{% elif tokens is not none and tokens|length > 0 and s is not none and s|length > 0 %}
+    {# Untagged token indexes #}
+    {% set untagged_tokens_index_start = 0 %}
+    {% set untagged_tokens_index_end = tokens|length - 1 %}
+
+    {% include "_tokens_s.html" %}
+{# "S" Output #}
+{% elif s is not none and s|length > 0 %}
+    {# Untokenized char byte positions, i.e. indexes into the str, s. #}
+    {% set untokenized_chars_pos_start = 0 %}
+    {% set untokenized_chars_pos_end = s|length %}
+
+    {% include "__s.html" %}
+{# Otherwise, no output? That's not good. #}
+{% else %}
+    <h1>No output!</h1>
+{% endif %}
+{% endblock %}
