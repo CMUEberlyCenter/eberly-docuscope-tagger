@@ -2,12 +2,9 @@
 __author__ = 'kohlmannj'
 
 from copy import copy, deepcopy
-import os
-import docuscope.Ity.Ity
-import docuscope.Ity.Ity.Taggers.DocuscopeTagger.DocuscopeDictionary
-from .DocuscopeCSVDictionary import DocuscopeCSVDictionary
-from ....Ity.Tokenizers import Tokenizer
-from .. import Tagger
+#import os
+from ...Tokenizers.Tokenizer import Tokenizer
+from ..Tagger import Tagger
 
 import logging
 
@@ -45,22 +42,23 @@ class DocuscopeTagger(Tagger):
     """
 
     def __init__(
-        self,
-        debug=False,
-        label="",
-        excluded_token_types=(
-            Tokenizer.TYPES["WHITESPACE"],
-            Tokenizer.TYPES["NEWLINE"]
-        ),
-        untagged_rule_name=None,
-        no_rules_rule_name=None,
-        excluded_rule_name=None,
-        return_untagged_tags=False,
-        return_no_rules_tags=False,
-        return_excluded_tags=False,
-        return_included_tags=False,
-        allow_overlapping_tags=False,
-        dictionary_path=None
+            self,
+            debug=False,
+            label="",
+            excluded_token_types=(
+                Tokenizer.TYPES["WHITESPACE"],
+                Tokenizer.TYPES["NEWLINE"]
+            ),
+            untagged_rule_name=None,
+            no_rules_rule_name=None,
+            excluded_rule_name=None,
+            return_untagged_tags=False,
+            return_no_rules_tags=False,
+            return_excluded_tags=False,
+            return_included_tags=False,
+            allow_overlapping_tags=False,
+            dictionary={"words":{}, "rules":{}, "shortRules":{}},
+            dictionary_path="default"
     ):
         super(DocuscopeTagger, self).__init__(
             debug=debug,
@@ -81,33 +79,26 @@ class DocuscopeTagger(Tagger):
         self.allow_overlapping_tags = allow_overlapping_tags
         # Allow DocuscopeTagger to be initialized with a different path to the Docuscope dictionary.
 
-        # self.logger.info("DocuscopeTagger.__init__(): dictionary_path = {}".format(dictionary_path))
-
-        if dictionary_path is not None and os.path.exists(dictionary_path):
+        if dictionary_path is not None:
             self.dictionary_path = dictionary_path
             # Swizzle the dictionary filename into this instance's label.
-            self._label += "." + os.path.basename(dictionary_path)
+            self._label += "." + dictionary_path
             if self.return_excluded_tags:
                 self._label += "." + "return_excluded_tags"
             if self.allow_overlapping_tags:
                 self._label += "." + "allow_overlapping_tags"
         # If the given dictionary path is invalid, use the following default value.
         else:
-            self.dictionary_path = os.path.join(docuscope.Ity.Ity.dictionaries_root, "Docuscope/default")
             # Swizzle ".default" into this instance's label.
             self._label += ".default"
 
-        # self.logger.info("DocuscopeTagger.__init__(): self.dictionary_path = {}".format(self.dictionary_path))
-
-        # Is this dictionary a folder?
-        if os.path.isdir(self.dictionary_path):
-            # Cool, use DocuscopeDictionary.getDict to load that dictionary.
-            self._ds_dict = DocuscopeDictionary.getDict(self.dictionary_path)
-        # Is the dictionary a file with the extension ".csv"?
-        elif os.path.isfile(self.dictionary_path) and os.path.splitext(self.dictionary_path)[1] == ".csv":
-            # Load the Dictionary with a TopicModelDictionary.
-            self._ds_dict = DocuscopeCSVDictionary(rules_filename=self.dictionary_path)
-            self._ds_dict._load_rules()
+        self._ds_dict = dictionary
+        if "words" not in self._ds_dict:
+            self._ds_dict["words"] = {}
+        if "rules" not in self._ds_dict:
+            self._ds_dict["rules"] = {}
+        if "shortRules" not in self._ds_dict:
+            self._ds_dict["shortRules"] = {}
 
     def _get_ds_words_for_token(self, token, case_sensitive=False):
         # Get all the str representations of this token.
@@ -119,8 +110,8 @@ class DocuscopeTagger(Tagger):
             if not case_sensitive:
                 token_str = token_str.lower()
             # UnicodeWarning previously happened here when this was a try / KeyError block
-            if token_str in self._ds_dict.words:
-                ds_words = self._ds_dict.words[token_str]
+            if token_str in self._ds_dict["words"]:
+                ds_words = self._ds_dict["words"][token_str]
         return ds_words
 
     def _get_ds_words_for_token_index(self, token_index, case_sensitive=False):
@@ -149,7 +140,7 @@ class DocuscopeTagger(Tagger):
         best_ds_rule_len = 0
         for token_ds_word in self._get_ds_words_for_token_index(self.token_index):
             try:
-                rule_dict = self._ds_dict.rules[token_ds_word]
+                rule_dict = self._ds_dict["rules"][token_ds_word]
                 for next_token_ds_word in self._get_ds_words_for_token_index(next_token_index):
                     try:  # for the rd[nw]
                         for ds_lat, ds_rule in rule_dict[next_token_ds_word]:
@@ -227,7 +218,7 @@ class DocuscopeTagger(Tagger):
             for ds_word in token_ds_words:
                 try:
                     # Note: we'll set rule["full_name"] later.
-                    rule["name"] = self._ds_dict.shortRules[ds_word]
+                    rule["name"] = self._ds_dict["shortRules"][ds_word]
                     matching_ds_word = ds_word
                     break
                 except KeyError:
@@ -237,7 +228,7 @@ class DocuscopeTagger(Tagger):
             # an applicable rule).
             if rule["name"] is None:
                 for ds_word in token_ds_words:
-                    if ds_word in self._ds_dict.words:
+                    if ds_word in self._ds_dict["words"]:
                         rule["name"] = self.no_rules_rule_name
                         break
             # Still don't have a rule?

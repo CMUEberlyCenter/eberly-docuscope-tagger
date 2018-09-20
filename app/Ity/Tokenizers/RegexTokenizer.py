@@ -3,7 +3,7 @@ __author__ = 'kohlmannj'
 
 import re
 from html.parser import HTMLParser
-from . import Tokenizer
+from .Tokenizer import Tokenizer
 
 
 class RegexTokenizer(Tokenizer):
@@ -251,7 +251,7 @@ class RegexTokenizer(Tokenizer):
                                argument is set to None.
                                (default None)
         """
-        super(RegexTokenizer, self).__init__(
+        super().__init__(
             debug=debug,
             label=label,
             excluded_token_types=excluded_token_types,

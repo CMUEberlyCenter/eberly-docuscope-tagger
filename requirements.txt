@@ -2,3 +2,7 @@ Flask
 flask-restful
 celery
 urllib3
+Jinja2
+python-docx
+python-memcached
+cloudant

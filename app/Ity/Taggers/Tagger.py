@@ -2,8 +2,8 @@
 __author__ = 'kohlmannj'
 
 import abc
-from docuscope.Ity.Ity.BaseClass import BaseClass
-from docuscope.Ity.Ity.Tokenizers import Tokenizer
+from ..BaseClass import BaseClass
+from ..Tokenizers.Tokenizer import Tokenizer
 
 
 class Tagger(BaseClass):

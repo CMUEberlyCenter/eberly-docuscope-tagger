@@ -2,7 +2,7 @@
 __author__ = 'kohlmannj'
 
 import abc
-from ...Ity import BaseClass
+from ..BaseClass import BaseClass
 
 
 class Tokenizer(BaseClass):
@@ -108,7 +108,7 @@ class Tokenizer(BaseClass):
     something to refactor in the near future, thus using an "empty_token" dict
     in the same way that Ity Tokenizers have an "empty_tag" dict.
     """
-    __metaclass__ = abc.ABCMeta
+    #__metaclass__ = abc.ABCMeta
 
     # The possible token types.
     TYPES = dict(WORD=0, PUNCTUATION=1, WHITESPACE=2, NEWLINE=3)
@@ -158,7 +158,7 @@ class Tokenizer(BaseClass):
         :return: A Tokenizer instance.
         :rtype: Ity.Tokenizers.Tokenizer
         """
-        super(Tokenizer, self).__init__(debug, label)
+        super().__init__(debug=debug, label=label)
         self.validate_excluded_token_types(excluded_token_types)
         self.excluded_token_types = excluded_token_types
         self.case_sensitive = case_sensitive

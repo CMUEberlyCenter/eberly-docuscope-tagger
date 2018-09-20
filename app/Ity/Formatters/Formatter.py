@@ -2,7 +2,7 @@
 __author__ = 'kohlmannj'
 
 import abc
-from docuscope.Ity.Ity import BaseClass
+from ..BaseClass import BaseClass
 
 
 class Formatter(BaseClass):
@@ -59,7 +59,7 @@ class Formatter(BaseClass):
         standalone=True,
         paginated=False
     ):
-        super(Formatter, self).__init__(
+        super().__init__(
             debug=debug,
             label=label
         )

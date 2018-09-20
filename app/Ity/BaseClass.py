@@ -1,10 +1,10 @@
 # coding=utf-8
 __author__ = 'kohlmannj'
 
-import abc
+from abc import ABC
 
 
-class BaseClass(object):
+class BaseClass(ABC):
     """
     A very light-weight base class for all Ity classes. Its specific purpose is
     to provide the very simple label and full_label properties, which are
@@ -32,7 +32,7 @@ class BaseClass(object):
             print "Looks like tokenizer_one and tokenizer_two could have\
             different output, as expected."
     """
-    __metaclass__ = abc.ABCMeta
+    #__metaclass__ = abc.ABCMeta
 
     def __init__(self, debug=False, label=None):
         self.debug = debug
