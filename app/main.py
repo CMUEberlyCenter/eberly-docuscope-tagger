@@ -10,8 +10,10 @@ import os
 import shutil
 import tempfile
 import urllib3
+import uuid
 
 import celery
+from cloudant import couchdb
 from flask_restful import Resource, Api, reqparse, abort
 import werkzeug
 
@@ -24,7 +26,7 @@ HTTP = urllib3.PoolManager()
 
 #pylint: disable=R0201
 
-def allowed_file(filename):
+def allowed_archive(filename):
     """Test a given file name to see if the archive extention is supported.
 
     Arguments:
@@ -43,6 +45,23 @@ def available_dictionaries():
                        "{}dictionary".format(app.config['DICTIONARY_SERVER']))
     return json.loads(req.data.decode('utf-8'))
 
+def add_file_to_db(docx_stream, doc_id=None):
+    """ """
+    data = str(base64.encodebytes(docx_stream.read()), encoding='utf-8')
+    doc_id = doc_id or str(uuid.uuid4())
+    with couchdb(app.config['COUCHDB_USER'], app.config['COUCHDB_PASSWORD'],
+                 url=app.config['COUCHDB_URL']) as cserv:
+        try:
+            corpus_db = cserv["corpus"]
+        except KeyError:
+            corpus_db = cserv.create_database('corpus')
+        if doc_id in corpus_db:
+            with corpus_db[doc_id] as doc:
+                doc['file'] = data
+        else:
+            corpus_db.create_document({"_id": doc_id, "file": data})
+    return doc_id
+
 class TagArchive(Resource):
     """Flask Restful Resource for handling /tag_archive which tags all of the
     docx files in an archive file."""
@@ -54,8 +73,8 @@ class TagArchive(Resource):
         - file: an archive file
 
         Returns:
-        - 403: if there is no file
-        - 'OK': on successful upload.
+        - 400: if there is no file or if the archive format is not supported
+        - {'task_id': uuid}: on successful upload.
         """
         if not self.parser:
             self.parser = reqparse.RequestParser()
@@ -73,8 +92,9 @@ class TagArchive(Resource):
         ds_dict = args['dictionary'] or 'default'
         if not afile or afile.filename == '':
             abort(400, message='No file selected')
-        if allowed_file(afile.filename):
+        if allowed_archive(afile.filename):
             task = None
+            doc_ids = []
             with tempfile.TemporaryDirectory() as upload_folder, \
                  tempfile.NamedTemporaryFile(suffix=afile.filename) as archive:
                 afile.save(archive)
@@ -82,17 +102,105 @@ class TagArchive(Resource):
                 tag_tasks = []
                 for docx in glob.iglob(os.path.join(upload_folder, "**/*.docx"), recursive=True):
                     with open(docx, 'rb') as binf:
-                        data = str(base64.encodebytes(binf.read()), encoding='utf-8')
-                        tag_tasks.append(tasks.tag_document.s(os.path.basename(docx), data, ds_dict))
+                        doc_id = add_file_to_db(binf)
+                        doc_ids.append(doc_id)
+                        #data = str(base64.encodebytes(binf.read()), encoding='utf-8')
+                        tag_tasks.append(tasks.tag_entry.s(doc_id, ds_dict))
                 task_def = celery.group(tag_tasks)
                 task = task_def()
                 task.save()
             if task:
-                return {"task_id": task.id, "zipfile": afile.filename}
+                return {"task_id": task.id, "file": afile.filename, "files": doc_ids}
         else:
             abort(400, message="Unsupported archive format")
 
 API.add_resource(TagArchive, '/tag_archive')
+
+class TagFile(Resource):
+    parser = None
+    def get_parser(self):
+        if not self.parser:
+            self.parser = reqparse.RequestParser()
+            self.parser.add_argument('file',
+                                     type=werkzeug.datastructures.FileStorage,
+                                     location='files', required=True,
+                                     help='A docx file.')
+            self.parser.add_argument('dictionary',
+                                     required=False,
+                                     default='default',
+                                     choices=available_dictionaries(),
+                                     help='DocuScope dictionary id.')
+        return self.parser
+    def post(self):
+        args = self.get_parser().parse_args()
+        ds_dict = args['dictionary'] or 'default'
+        afile = args['file']
+        if not afile or afile.filename == '':
+            abort(400, message='No file selected')
+        doc_id = add_file_to_db(afile)
+        tag_tasks = [tasks.tag_entry.s(doc_id, ds_dict)]
+        task_def = celery.group(tag_tasks)
+        task = task_def()
+        task.save()
+        return {"task_id": task.id, "file": doc_id, "filename": afile.filename}
+
+API.add_resource(TagFile, '/tag_file')
+
+class AddFile(Resource):
+    """Adds a file to an internal database, this is mostly meant for testing."""
+    parser = None
+    def get_parser(self):
+        if not self.parser:
+            self.parser = reqparse.RequestParser()
+            self.parser.add_argument('file', required=True,
+                                     location='files',
+                                     type=werkzeug.datastructures.FileStorage,
+                                     help='A docx file.')
+        return self.parser
+    def post(self):
+        args = self.get_parser().parse_args()
+        dfile = args['file']
+        doc_id = add_file_to_db(dfile)
+        return {"id": doc_id, "filename": dfile.filename}
+
+API.add_resource(AddFile, '/add_file')
+
+class TagEntry(Resource):
+    parser = None
+    def get_parser(self):
+        if not self.parser:
+            self.parser = reqparse.RequestParser()
+            self.parser.add_argument(
+                'file_id', required=True,
+                help='An id of the file reference in the database.')
+            self.parser.add_argument('dictionary',
+                                     required=False,
+                                     default='default',
+                                     choices=available_dictionaries(),
+                                     help='DocuScope dictionary id.')
+        return self.parser
+    def get(self):
+        args = self.get_parser().parse_args() #TODO check if args work.
+        ds_dict = args['dictionary'] or 'default'
+        file_id = args['file_id'] #TODO: sanitize
+        #TODO check for existance of file_id
+        tag_tasks = [tasks.tag_entry.s(file_id, ds_dict)]
+        task_def = celery.group(tag_tasks)
+        task = task_def()
+        task.save()
+        return {"task_id": task.id, "file": file_id}
+    def post(self):
+        args = self.get_parser().parse_args()
+        ds_dict = args['dictionary'] or 'default'
+        file_id = args['file_id'] #TODO: sanitize
+        #TODO check for existance of file_id
+        tag_tasks = [tasks.tag_entry.s(file_id, ds_dict)]
+        task_def = celery.group(tag_tasks)
+        task = task_def()
+        task.save()
+        return {"task_id": task.id, "file": file_id}
+
+API.add_resource(TagEntry, '/tag')
 
 def task_status(task_id):
     """Get the status of a Celery task."""
@@ -117,7 +225,7 @@ def task_status(task_id):
         abort(400, message="Could not locate task {}".format(task_id))
     return status
 
-class TagArchiveStatus(Resource):
+class TagJobStatus(Resource):
     """Flask Restful Resource for checking on the status of a tagging job."""
     parser = None
     def post(self):
@@ -131,7 +239,7 @@ class TagArchiveStatus(Resource):
     def get(self):
         """Responds to GET messages for the status of a tagging job."""
         abort(501, message="GET not yet supported.")
-API.add_resource(TagArchiveStatus, '/tag_status')
+API.add_resource(TagJobStatus, '/tag_status')
 
 @app.route("/")
 def home():

@@ -49,15 +49,16 @@ def tag_string(doc_id, text, dictionary_label="default"):
     """ """
     pass
 
-@celery.task
-def tag_entry(doc_id, dictionary_label="default"):
-    """ """
-    pass
+def create_tag_dict(toml_string, ds_dictionary="default"):
+    """Use DocuScope tagger to analyze a string.
 
-@celery.task
-def tag_document(doc_id, document, dictionary_label="default"):
-    """Tag the given document using DocuScope."""
-    result = create_ds_tagger(dictionary_label).tag_string(MSWord.toTOML(document))
+    Arguments:
+    toml_string: a string in TOML format.
+    ds_dictionary: a string label for a valid DocuScope dictionary.
+
+    Returns:
+    A dictionary of DocuScope tag statistics."""
+    result = create_ds_tagger(ds_dictionary).tag_string(toml_string)
     doc_dict = {
         'ds_output': result['format_output'],
         'ds_num _included_tokens': result['num_included_tokens'],
@@ -65,7 +66,7 @@ def tag_document(doc_id, document, dictionary_label="default"):
         'ds_num_word_tokens': result['num_word_tokens'],
         'ds_num_excluded_tokens': result['num_excluded_tokens'],
         'ds_num_punctuation_tokens': result['num_punctuation_tokens'],
-        'ds_dictionary': dictionary_label
+        'ds_dictionary': ds_dictionary
     }
     tag_dict = {}
     for _, ds_value in result['tag_dict'].items():
@@ -75,6 +76,30 @@ def tag_document(doc_id, document, dictionary_label="default"):
     doc_dict['ds_tag_dict'] = tag_dict
     cdict = countdict(result['tag_chain'])
     doc_dict['ds_count_dict'] = {str(key): str(value) for key, value in cdict.items()}
+    return doc_dict
+
+@celery.task
+def tag_entry(doc_id, ds_dictionary="default"):
+    """Uses DocuScope tagger on the document stored in a database.
+    Arguments:
+    doc_id: a string and is the id of the document in the database.
+    ds_dictionary: a string label for a valid DocuScope dictionary."""
+    with couchdb(celery.conf['COUCHDB_USER'], celery.conf['COUCHDB_PASSWORD'],
+                 url=celery.conf['COUCHDB_URL']) as cserv:
+        corpus_db = cserv["corpus"]
+        if corpus_db.exists():
+            if doc_id in corpus_db:
+                with corpus_db[doc_id] as doc:
+                    doc_dict = create_tag_dict(MSWord.toTOML(doc["file"]), ds_dictionary)
+                    doc.update(doc_dict)
+                #corpus_db[doc_id].save()
+
+
+
+@celery.task
+def tag_document(doc_id, document, ds_dictionary="default"):
+    """Tag the given document using DocuScope."""
+    doc_dict = create_tag_dict(MSWord.toTOML(document), ds_dictionary)
 
     #ds_tag_info = json.dumps(doc_dict)
     with couchdb(celery.conf['COUCHDB_USER'], celery.conf['COUCHDB_PASSWORD'],
