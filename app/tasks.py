@@ -2,7 +2,6 @@
 import json
 import urllib3
 from cloudant import couchdb
-#from flask import current_app
 from app import create_celery_app
 from Ity.ItyTagger import ItyTagger
 import MSWord
@@ -43,11 +42,6 @@ def countdict(target_list):
     for i in pairs:
         out[i] = out.get(i, 0) + 1
     return out
-
-@celery.task
-def tag_string(doc_id, text, dictionary_label="default"):
-    """ """
-    pass
 
 def create_tag_dict(toml_string, ds_dictionary="default"):
     """Use DocuScope tagger to analyze a string.
@@ -90,34 +84,10 @@ def tag_entry(doc_id, ds_dictionary="default"):
         if corpus_db.exists():
             if doc_id in corpus_db:
                 with corpus_db[doc_id] as doc:
-                    doc_dict = create_tag_dict(MSWord.toTOML(doc["file"]), ds_dictionary)
+                    doc_dict = create_tag_dict(MSWord.toTOML(doc["file"]),
+                                               ds_dictionary)
                     doc.update(doc_dict)
                 #corpus_db[doc_id].save()
-
-
-
-@celery.task
-def tag_document(doc_id, document, ds_dictionary="default"):
-    """Tag the given document using DocuScope."""
-    doc_dict = create_tag_dict(MSWord.toTOML(document), ds_dictionary)
-
-    #ds_tag_info = json.dumps(doc_dict)
-    with couchdb(celery.conf['COUCHDB_USER'], celery.conf['COUCHDB_PASSWORD'],
-                 url=celery.conf['COUCHDB_URL']) as cserv:
-        try:
-            corpus_db = cserv["corpus"]
-        except KeyError:
-            corpus_db = cserv.create_database('corpus')
-        if corpus_db.exists():
-            if doc_id in corpus_db:
-                with corpus_db[doc_id] as doc:
-                    doc.update(doc_dict)
-                #corpus_db[doc_id].save()
-            else:
-                doc_dict["_id"] = doc_id
-                corpus_db.create_document(doc_dict, True)
-    #TODO: store in db
-    #return
 
 if __name__ == '__main__':
     celery.start()
