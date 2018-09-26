@@ -173,18 +173,18 @@ class Tagger(BaseClass):
     }
 
     def __init__(
-        self,
-        debug=False,
-        label=None,
-        excluded_token_types=(),
-        case_sensitive=True,
-        untagged_rule_name=None,
-        no_rules_rule_name=None,
-        excluded_rule_name=None,
-        return_untagged_tags=False,
-        return_no_rules_tags=False,
-        return_excluded_tags=False,
-        return_included_tags=False
+            self,
+            debug=False,
+            label=None,
+            excluded_token_types=(),
+            case_sensitive=True,
+            untagged_rule_name=None,
+            no_rules_rule_name=None,
+            excluded_rule_name=None,
+            return_untagged_tags=False,
+            return_no_rules_tags=False,
+            return_excluded_tags=False,
+            return_included_tags=False
     ):
         """
         The Tagger constructor. Note the defaults---the Tagger base class is

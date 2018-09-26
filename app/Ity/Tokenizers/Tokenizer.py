@@ -117,12 +117,12 @@ class Tokenizer(BaseClass):
     INDEXES = dict(STRS=0, POS=1, LENGTH=2, TYPE=3)
 
     def __init__(
-        self,
-        debug=False,
-        label=None,
-        excluded_token_types=(),
-        case_sensitive=True,
-        preserve_original_strs=False
+            self,
+            debug=False,
+            label=None,
+            excluded_token_types=(),
+            case_sensitive=True,
+            preserve_original_strs=False
     ):
         """
         The Tokenizer constructor. Make sure you call this in Tokenizer

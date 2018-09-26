@@ -9,9 +9,9 @@ import json
 import os
 import shutil
 import tempfile
-import urllib3
 import uuid
 
+import urllib3
 import celery
 from cloudant import couchdb
 from flask_restful import Resource, Api, reqparse, abort
@@ -46,7 +46,12 @@ def available_dictionaries():
     return json.loads(req.data.decode('utf-8'))
 
 def add_file_to_db(docx_stream, doc_id=None):
-    """ """
+    """Adds and entry to to database for the file.
+    Arguments:
+    - docx_stream: a stream of a .docx file.
+    - doc_id: optional, use for the id in the database, if not set one will be generated.
+    Returns: [String] the id of the document in the database.
+    """
     data = str(base64.encodebytes(docx_stream.read()), encoding='utf-8')
     doc_id = doc_id or str(uuid.uuid4())
     with couchdb(app.config['COUCHDB_USER'], app.config['COUCHDB_PASSWORD'],
@@ -92,33 +97,34 @@ class TagArchive(Resource):
         ds_dict = args['dictionary'] or 'default'
         if not afile or afile.filename == '':
             abort(400, message='No file selected')
-        if allowed_archive(afile.filename):
-            task = None
-            doc_ids = []
-            with tempfile.TemporaryDirectory() as upload_folder, \
-                 tempfile.NamedTemporaryFile(suffix=afile.filename) as archive:
-                afile.save(archive)
-                shutil.unpack_archive(archive.name, upload_folder)
-                tag_tasks = []
-                for docx in glob.iglob(os.path.join(upload_folder, "**/*.docx"), recursive=True):
-                    with open(docx, 'rb') as binf:
-                        doc_id = add_file_to_db(binf)
-                        doc_ids.append(doc_id)
-                        #data = str(base64.encodebytes(binf.read()), encoding='utf-8')
-                        tag_tasks.append(tasks.tag_entry.s(doc_id, ds_dict))
-                task_def = celery.group(tag_tasks)
-                task = task_def()
-                task.save()
-            if task:
-                return {"task_id": task.id, "file": afile.filename, "files": doc_ids}
-        else:
+        if not allowed_archive(afile.filename):
             abort(400, message="Unsupported archive format")
-
+        task = None
+        doc_ids = []
+        with tempfile.TemporaryDirectory() as upload_folder, \
+             tempfile.NamedTemporaryFile(suffix=afile.filename) as archive:
+            afile.save(archive)
+            shutil.unpack_archive(archive.name, upload_folder)
+            tag_tasks = []
+            for docx in glob.iglob(os.path.join(upload_folder, "**/*.docx"), recursive=True):
+                with open(docx, 'rb') as binf:
+                    doc_id = add_file_to_db(binf)
+                    doc_ids.append(doc_id)
+                    #data = str(base64.encodebytes(binf.read()), encoding='utf-8')
+                    tag_tasks.append(tasks.tag_entry.s(doc_id, ds_dict))
+            task_def = celery.group(tag_tasks)
+            task = task_def()
+            task.save()
+        if not task:
+            abort(400, message="Failed to create task.")
+        return {"task_id": task.id, "file": afile.filename, "files": doc_ids}
 API.add_resource(TagArchive, '/tag_archive')
 
 class TagFile(Resource):
+    """Flask RESTful Resource for submitting a file for tagging."""
     parser = None
     def get_parser(self):
+        """Initialize and return the request body parser."""
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument('file',
@@ -132,11 +138,14 @@ class TagFile(Resource):
                                      help='DocuScope dictionary id.')
         return self.parser
     def post(self):
+        """Responds to POST requests and returns the task and file ids."""
         args = self.get_parser().parse_args()
         ds_dict = args['dictionary'] or 'default'
         afile = args['file']
         if not afile or afile.filename == '':
             abort(400, message='No file selected')
+        if not afile.filename[-4] == "docx": #TODO: add better check using mime
+            abort(400, message='File must be a .docx file.')
         doc_id = add_file_to_db(afile)
         tag_tasks = [tasks.tag_entry.s(doc_id, ds_dict)]
         task_def = celery.group(tag_tasks)
@@ -150,6 +159,7 @@ class AddFile(Resource):
     """Adds a file to an internal database, this is mostly meant for testing."""
     parser = None
     def get_parser(self):
+        """Initialize and return the request body parser."""
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument('file', required=True,
@@ -158,6 +168,8 @@ class AddFile(Resource):
                                      help='A docx file.')
         return self.parser
     def post(self):
+        """Responds to POST requests, inserts the file in the database,
+        and returns the database's file id."""
         args = self.get_parser().parse_args()
         dfile = args['file']
         doc_id = add_file_to_db(dfile)
@@ -166,8 +178,10 @@ class AddFile(Resource):
 API.add_resource(AddFile, '/add_file')
 
 class TagEntry(Resource):
+    """Flask RESTful Resource for tagging an existing database file."""
     parser = None
     def get_parser(self):
+        """Initialize and return the request body parser."""
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument(
@@ -180,6 +194,7 @@ class TagEntry(Resource):
                                      help='DocuScope dictionary id.')
         return self.parser
     def get(self):
+        """Responds to GET calls to tag a database entry."""
         args = self.get_parser().parse_args() #TODO check if args work.
         ds_dict = args['dictionary'] or 'default'
         file_id = args['file_id'] #TODO: sanitize
@@ -190,6 +205,7 @@ class TagEntry(Resource):
         task.save()
         return {"task_id": task.id, "file": file_id}
     def post(self):
+        """Responds to POST calls to tag a database entry."""
         args = self.get_parser().parse_args()
         ds_dict = args['dictionary'] or 'default'
         file_id = args['file_id'] #TODO: sanitize
@@ -208,13 +224,13 @@ def task_status(task_id):
     status = {'status': 'UNKNOWN'}
     if gtask:
         try:
-            if (gtask.successful()):
+            if gtask.successful():
                 #gtask.forget()
                 status = {'status': 'SUCCESS'}
-            elif (gtask.failed()):
+            elif gtask.failed():
                 #gtask.forget()
                 status = {'status': 'ERROR', 'message': 'A job failed!'}
-            elif (gtask.waiting()):
+            elif gtask.waiting():
                 completed = gtask.completed_count()
                 total = len(gtask.results)
                 status = {'status': 'WAITING',

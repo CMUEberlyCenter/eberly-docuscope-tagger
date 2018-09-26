@@ -15,15 +15,18 @@ import inspect
 
 
 def init_tokenizer(tokenizer, **init_options):
-    return __init_module_class("Ity.Tokenizers", tokenizer, required_methods=("tokenize",), **init_options)
+    return __init_module_class("Ity.Tokenizers", tokenizer,
+                               required_methods=("tokenize",), **init_options)
 
 
 def init_tagger(tagger, **init_options):
-    return __init_module_class("Ity.Taggers", tagger, required_methods=("tag",), **init_options)
+    return __init_module_class("Ity.Taggers", tagger,
+                               required_methods=("tag",), **init_options)
 
 
 def init_formatter(formatter, **init_options):
-    return __init_module_class("Ity.Formatters", formatter, required_methods=("format",), **init_options)
+    return __init_module_class("Ity.Formatters", formatter,
+                               required_methods=("format",), **init_options)
 
 
 def __init_module_class(module_name, class_name, required_methods=(), **init_options):
@@ -32,11 +35,11 @@ def __init_module_class(module_name, class_name, required_methods=(), **init_opt
     if type(module_name) is str and type(class_name) is str:
         class_name = import_module_class(module_name, class_name)
     # Guess not, so is it an object with the callable methods we need?
-    elif len(required_methods) > 0 and reduce(
-        lambda x, y: x & y, [
-            hasattr(class_name, method_name) and callable(getattr(class_name, method_name))
-            for method_name in required_methods
-        ]
+    elif required_methods and reduce(
+            lambda x, y: x & y, [
+                hasattr(class_name, method_name) and callable(getattr(class_name, method_name))
+                for method_name in required_methods
+            ]
     ):
         # Is it an instance instead of a class?
         if not inspect.isclass(class_name):

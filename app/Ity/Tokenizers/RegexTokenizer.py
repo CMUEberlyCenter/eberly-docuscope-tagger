@@ -183,17 +183,16 @@ class RegexTokenizer(Tokenizer):
     """
 
     def __init__(self,
-         debug=False,
-         label=None,
-         excluded_token_types=(),
-         case_sensitive=True,
-         preserve_original_strs=False,
-         remove_hyphen_breaks=True,
-         convert_entities=True,
-         convert_newlines=True,
-         condense_whitespace=None,
-         condense_newlines=None
-    ):
+                 debug=False,
+                 label=None,
+                 excluded_token_types=(),
+                 case_sensitive=True,
+                 preserve_original_strs=False,
+                 remove_hyphen_breaks=True,
+                 convert_entities=True,
+                 convert_newlines=True,
+                 condense_whitespace=None,
+                 condense_newlines=None):
         """
         Instantiates a RegexTokenizer. The initialization options below affect
         the output of the self.tokenize() and self.batch_tokenize() methods.
@@ -311,7 +310,7 @@ class RegexTokenizer(Tokenizer):
         # sure re.VERBOSE is one of the flags used!
         self.tokenize_pattern = re.compile(final_tokenize_pattern_str, re.I | re.VERBOSE)
 
-    def _format_token_entity(self, m, token_data):
+    def _format_token_entity(self, _m, token_data):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing an HTML entity. Most of the time we want to convert
@@ -397,13 +396,16 @@ class RegexTokenizer(Tokenizer):
                 # group, the hyphen in the hyphen break should be preserved
                 # since it's indicative of breaking the word across a
                 # newline *and* an actual word with hyphens in it.
-                inner_word_hyphens = re.findall(self.__pattern_str_inner_word_hyphen, token_strs[0])
-                if len(inner_word_hyphens) == 0:
+                inner_word_hyphens = re.findall(
+                    self.__pattern_str_inner_word_hyphen, token_strs[0])
+                if not inner_word_hyphens:
                     # Remove the text of the hyphen_break groups.
-                    token_str = re.sub(self._pattern_str_hyphen_break, "", token_strs[0], flags=re.I | re.VERBOSE)
+                    token_str = re.sub(self._pattern_str_hyphen_break, "",
+                                       token_strs[0], flags=re.I | re.VERBOSE)
                 else:
                     # Replace the "hyphen breaks" with single hyphens instead.
-                    token_str = re.sub(self._pattern_str_hyphen_break, "-", token_strs[0], flags=re.I | re.VERBOSE)
+                    token_str = re.sub(self._pattern_str_hyphen_break, "-",
+                                       token_strs[0], flags=re.I | re.VERBOSE)
                     # Are we supposed to pass along the original token string?
                 if self.preserve_original_strs:
                     token_strs.insert(0, token_str)
@@ -414,7 +416,7 @@ class RegexTokenizer(Tokenizer):
                 # How did we match this group? We didn't even look for it.
                 raise ValueError("Somehow found a hyphen_break group when we shouldn't have.")
 
-    def _format_token_whitespace(self, m, token_data):
+    def _format_token_whitespace(self, _m, token_data):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing whitespace. We may want to "condense" a token
@@ -445,7 +447,7 @@ class RegexTokenizer(Tokenizer):
             else:
                 token_strs[0] = self.condense_whitespace
 
-    def _format_token_newline(self, m, token_data):
+    def _format_token_newline(self, _m, token_data):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing newlines. We may want to "condense" a token
@@ -469,12 +471,10 @@ class RegexTokenizer(Tokenizer):
         # Should we convert newlines? We'll try to be smart about condensing
         # \r\n into a single newline. Don't do this if the token string is
         # already all \n characters.
-        if (
-            self.convert_newlines and
-            not self.condense_newlines and
-            not (reduce(lambda x, y: x & y, [c == "\n" for c in token_strs[-1]]))
-        ):
-            converted_newlines_string = re.sub(self._pattern_str_single_newline, "\n", token_strs[-1])
+        if (self.convert_newlines and not self.condense_newlines and
+                not any([c == "\n" for c in token_strs[-1]])):
+            converted_newlines_string = re.sub(
+                self._pattern_str_single_newline, "\n", token_strs[-1])
             if self.preserve_original_strs:
                 token_strs.insert(0, converted_newlines_string)
             # Replace the token string instead.
@@ -560,36 +560,26 @@ class RegexTokenizer(Tokenizer):
             # What kind of token is this, and should we be outputting it?
 
             # Words
-            if (
-                m.group("word") is not None and
-                Tokenizer.TYPES["WORD"] not in self.excluded_token_types
-            ):
+            if (m.group("word") is not None and
+                    Tokenizer.TYPES["WORD"] not in self.excluded_token_types):
                 self._format_token_word(m, single_token_list)
             # Entities (Punctuation)
-            elif (
-                m.group("entity") is not None and
-                Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types
-            ):
+            elif (m.group("entity") is not None and
+                  Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types):
                 self._format_token_entity(m, single_token_list)
             # Remnants (Punctuation)
-            elif (
-                m.group("remnant") is not None and
-                Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types
-            ):
+            elif (m.group("remnant") is not None and
+                  Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types):
                 # No special behavior for remnant tokens, aside from indicating
                 # that they are punctuation tokens.
                 single_token_list[self.INDEXES["TYPE"]] = self.TYPES["PUNCTUATION"]
             # Whitespace
-            elif (
-                m.group("whitespace") is not None and
-                Tokenizer.TYPES["WHITESPACE"] not in self.excluded_token_types
-            ):
+            elif (m.group("whitespace") is not None and
+                  Tokenizer.TYPES["WHITESPACE"] not in self.excluded_token_types):
                 self._format_token_whitespace(m, single_token_list)
             # Newlines
-            elif (
-                m.group("newline") is not None and
-                Tokenizer.TYPES["NEWLINE"] not in self.excluded_token_types
-            ):
+            elif (m.group("newline") is not None and
+                  Tokenizer.TYPES["NEWLINE"] not in self.excluded_token_types):
                 self._format_token_newline(m, single_token_list)
             # We made it to this condition, which means we should NOT add this
             # token to the tokens list. Therefore, `continue`.

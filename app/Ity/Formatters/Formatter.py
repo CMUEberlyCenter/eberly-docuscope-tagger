@@ -51,30 +51,28 @@ class Formatter(BaseClass):
     * **Paginated** templates output directories.**
     """
     def __init__(
-        self,
-        debug=False,
-        label=None,
-        token_str_index=-1,
-        token_whitespace_newline_str_index=0,
-        standalone=True,
-        paginated=False
-    ):
+            self,
+            debug=False,
+            label=None,
+            token_str_index=-1,
+            token_whitespace_newline_str_index=0,
+            standalone=True,
+            paginated=False):
         super().__init__(
             debug=debug,
             label=label
         )
         self.token_str_index = token_str_index
-        self.token_whitespace_newline_str_index = token_whitespace_newline_str_index,
+        self.token_whitespace_newline_str_index = token_whitespace_newline_str_index
         self.standalone = standalone
         self.paginated = paginated
 
     @abc.abstractmethod
     def format(
-        self,
-        output_path=None,
-        rules=None,
-        tags=None,
-        tokens=None,
-        text_str=None
-    ):
+            self,
+            output_path=None,
+            rules=None,
+            tags=None,
+            tokens=None,
+            text_str=None):
         return

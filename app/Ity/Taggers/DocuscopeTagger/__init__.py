@@ -2,11 +2,11 @@
 __author__ = 'kohlmannj'
 
 from copy import copy, deepcopy
+import logging
 #import os
+
 from ...Tokenizers.Tokenizer import Tokenizer
 from ..Tagger import Tagger
-
-import logging
 
 class DocuscopeTagger(Tagger):
     """
@@ -57,7 +57,7 @@ class DocuscopeTagger(Tagger):
             return_excluded_tags=False,
             return_included_tags=False,
             allow_overlapping_tags=False,
-            dictionary={"words":{}, "rules":{}, "shortRules":{}},
+            dictionary=None,
             dictionary_path="default"
     ):
         super(DocuscopeTagger, self).__init__(
@@ -74,6 +74,7 @@ class DocuscopeTagger(Tagger):
         )
 
         self.logger = logging.getLogger(__name__)
+        dictionary = dictionary or {"words":{}, "rules":{}, "shortRules":{}}
 
         # This is a weird setting
         self.allow_overlapping_tags = allow_overlapping_tags
@@ -177,9 +178,8 @@ class DocuscopeTagger(Tagger):
         if self._is_valid_rule(rule) and self._is_valid_tag(tag):
             # Return the best rule's rule and tag.
             return rule, tag
-        else:
-            # No long rule applies.
-            return None, None
+        # No long rule applies.
+        return None, None
 
     def _long_rule_applies_at_token_index(self, rule):
         try:
@@ -188,7 +188,7 @@ class DocuscopeTagger(Tagger):
             next_token_index = self._get_nth_next_included_token_index()
             for i in range(2, len(rule)):
                 next_token_index = self._get_nth_next_included_token_index(starting_token_index=next_token_index)
-                if next_token_index is None or not (rule[i] in self._get_ds_words_for_token_index(next_token_index)):
+                if next_token_index is None or rule[i] not in self._get_ds_words_for_token_index(next_token_index):
                     return False
             # Made it out of the loop? Then the rule applies!
             return next_token_index
