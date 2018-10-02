@@ -19,7 +19,7 @@ build_web:
   stage: build
   script:
     - docker build -t "${REF_CONTAINER}" .
-    - docker push "${REF-CONTAINER}"
+    - docker push "${REF_CONTAINER}"
 
 build_celery:
   stage: build
