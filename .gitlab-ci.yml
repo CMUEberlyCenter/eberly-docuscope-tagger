@@ -9,7 +9,7 @@ stages:
   - release
 
 variables:
-  CELERY_CONTAINER: $CI_REGISTRY_IMAGE"_task"
+  CELERY_CONTAINER: $CI_REGISTRY_IMAGE-task
 
 before_script:
   - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
