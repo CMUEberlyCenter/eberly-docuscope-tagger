@@ -14,7 +14,7 @@ def get_dictionary(dictionary="default"):
     """Retrieve the dictionary."""
     req = HTTP.request(
         'GET',
-        "{}dictionary/{}".format(celery.conf['DICTIONARY_SERVER'], dictionary))
+        "{}/dictionary/{}".format(celery.conf['DICTIONARY_SERVER'], dictionary))
     return json.loads(req.data.decode('utf-8'))
 
 def create_ds_tagger(dictionary="default"):

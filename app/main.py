@@ -42,17 +42,10 @@ def allowed_archive(filename):
 def available_dictionaries():
     """Retrieve the list of available DocuScope dictionaries."""
     req = HTTP.request('GET',
-                       "{}dictionary".format(app.config['DICTIONARY_SERVER']))
+                       "{}/dictionary".format(app.config['DICTIONARY_SERVER']))
     return json.loads(req.data.decode('utf-8'))
 
-def add_file_to_db(docx_stream, doc_id=None):
-    """Adds and entry to to database for the file.
-    Arguments:
-    - docx_stream: a stream of a .docx file.
-    - doc_id: optional, use for the id in the database, if not set one will be generated.
-    Returns: [String] the id of the document in the database.
-    """
-    data = str(base64.encodebytes(docx_stream.read()), encoding='utf-8')
+def add_filestring_to_db(docx_string, doc_id=None):
     doc_id = doc_id or str(uuid.uuid4())
     with couchdb(app.config['COUCHDB_USER'], app.config['COUCHDB_PASSWORD'],
                  url=app.config['COUCHDB_URL']) as cserv:
@@ -62,10 +55,20 @@ def add_file_to_db(docx_stream, doc_id=None):
             corpus_db = cserv.create_database('corpus')
         if doc_id in corpus_db:
             with corpus_db[doc_id] as doc:
-                doc['file'] = data
+                doc['file'] = docx_string
         else:
-            corpus_db.create_document({"_id": doc_id, "file": data})
+            corpus_db.create_document({"_id": doc_id, "file": docx_string})
     return doc_id
+
+def add_file_to_db(docx_stream, doc_id=None):
+    """Adds and entry to to database for the file.
+    Arguments:
+    - docx_stream: a stream of a .docx file.
+    - doc_id: optional, use for the id in the database, if not set one will be generated.
+    Returns: [String] the id of the document in the database.
+    """
+    data = str(base64.encodebytes(docx_stream.read()), encoding='utf-8')
+    return add_filestring_to_db(data, doc_id)
 
 class TagArchive(Resource):
     """Flask Restful Resource for handling /tag_archive which tags all of the
@@ -109,7 +112,7 @@ class TagArchive(Resource):
             for docx in glob.iglob(os.path.join(upload_folder, "**/*.docx"), recursive=True):
                 with open(docx, 'rb') as binf:
                     doc_id = add_file_to_db(binf)
-                    doc_ids.append(doc_id)
+                    doc_ids.append({'id': doc_id})
                     #data = str(base64.encodebytes(binf.read()), encoding='utf-8')
                     tag_tasks.append(tasks.tag_entry.s(doc_id, ds_dict))
             task_def = celery.group(tag_tasks)
@@ -185,8 +188,11 @@ class TagEntry(Resource):
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument(
-                'file_id', required=True,
+                'id', required=True,
                 help='An id of the file reference in the database.')
+            self.parser.add_argument(
+                'data', required=False,
+                help='A base64 encoded string of a docx file.')
             self.parser.add_argument('dictionary',
                                      required=False,
                                      default='default',
@@ -208,7 +214,8 @@ class TagEntry(Resource):
         """Responds to POST calls to tag a database entry."""
         args = self.get_parser().parse_args()
         ds_dict = args['dictionary'] or 'default'
-        file_id = args['file_id'] #TODO: sanitize
+        file_id = args['id'] #TODO: sanitize
+        file_id = add_filestring_to_db(args['data'], file_id)
         #TODO check for existance of file_id
         tag_tasks = [tasks.tag_entry.s(file_id, ds_dict)]
         task_def = celery.group(tag_tasks)
