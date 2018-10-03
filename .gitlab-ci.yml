@@ -8,11 +8,21 @@ stages:
   - test
   - release
 
+variables:
+  REF_CONTAINER: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
+  CELERY_CONTAINER: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}-task
+
 before_script:
   - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
 
-build:
+build_web:
   stage: build
   script:
-    - docker build -t "$CI_REGISTRY_IMAGE" .
-    - docker push "$CI_REGISTRY_IMAGE"
+    - docker build -t "${REF_CONTAINER}" .
+    - docker push "${REF_CONTAINER}"
+
+build_celery:
+  stage: build
+  script:
+    - docker build -t "$CELERY_CONTAINER" -f Dockerfile-celery .
+    - docker push "$CELERY_CONTAINER"
