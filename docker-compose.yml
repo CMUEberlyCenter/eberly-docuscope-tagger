@@ -19,7 +19,7 @@ services:
   celery:
     build:
       context: .
-      dockerfile: Dockerfile.celery
+      dockerfile: Dockerfile-celery
   web:
     build:
       context: .
