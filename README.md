@@ -1,3 +1,5 @@
+[![pipeline status](https://gitlab.com/CMU_Sidecar/docuscope-tag/badges/master/pipeline.svg)](https://gitlab.com/CMU_Sidecar/docuscope-tag/commits/master)
+
 DocuScope Tagger Service
 ========================
 A Docker'ed service for tagging text based on the DocuScope Ity tagger.
