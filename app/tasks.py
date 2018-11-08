@@ -1,21 +1,17 @@
 """Implements the distributed Celery tasks for tagging files using DocuScope."""
-import json
-import urllib3
-from cloudant import couchdb
+#import json
+import requests
+#from cloudant import couchdb
 from app import create_celery_app
 from Ity.ItyTagger import ItyTagger
 import MSWord
 
-celery = create_celery_app()
-
-HTTP = urllib3.PoolManager()
+CELERY = create_celery_app()
 
 def get_dictionary(dictionary="default"):
     """Retrieve the dictionary."""
-    req = HTTP.request(
-        'GET',
-        "{}/dictionary/{}".format(celery.conf['DICTIONARY_SERVER'], dictionary))
-    return json.loads(req.data.decode('utf-8'))
+    req = requests.get("{}/dictionary/{}".format(CELERY.conf['DICTIONARY_SERVER'], dictionary))
+    return req.json()
 
 def create_ds_tagger(dictionary="default"):
     """Create tagger using the specified dictionary."""
@@ -72,22 +68,23 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
     doc_dict['ds_count_dict'] = {str(key): str(value) for key, value in cdict.items()}
     return doc_dict
 
-@celery.task
-def tag_entry(doc_id, ds_dictionary="default"):
+@CELERY.task
+def tag_entry(doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
-    doc_id: a string and is the id of the document in the database.
-    ds_dictionary: a string label for a valid DocuScope dictionary."""
-    with couchdb(celery.conf['COUCHDB_USER'], celery.conf['COUCHDB_PASSWORD'],
-                 url=celery.conf['COUCHDB_URL']) as cserv:
-        corpus_db = cserv["corpus"]
-        if corpus_db.exists():
-            if doc_id in corpus_db:
-                with corpus_db[doc_id] as doc:
-                    doc_dict = create_tag_dict(MSWord.toTOML(doc["file"]),
-                                               ds_dictionary)
-                    doc.update(doc_dict)
-                #corpus_db[doc_id].save()
+    doc_id: a string and is the id of the document in the database."""
+    req = requests.get("{}/api/db/document/{}".format(CELERY.conf['OLI_DOCUMENT_SERVER'], doc_id))
+    doc = req.json()
+    if 'data' in doc:
+        # Set status to "submitted"
+        #TODO: check for errors
+        requests.post("{}/api/db/state/set_submitted".format(CELERY.conf['OLI_DOCUMENT_SERVER']),
+                      params={'id': doc_id})
+        doc_dict = create_tag_dict(MSWord.toTOML(doc['data']),
+                                   doc['dictionary'])
+        #TODO: check for errors
+        requests.post("{}/api/db/update".format(CELERY.conf['OLI_DOCUMENT_SERVER']),
+                      data={'id': doc_id, 'data': doc_dict})
 
 if __name__ == '__main__':
-    celery.start()
+    CELERY.start()

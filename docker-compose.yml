@@ -2,13 +2,13 @@ version: "3"
 services:
   dictionary:
     image: registry.gitlab.com/cmu_sidecar/docuscope-dictionary:latest
-  couchdb:
-    image: couchdb:latest
-    environment:
-      - COUCHDB_USER=guest
-      - COUCHDB_PASSWORD=guest
-    ports:
-      - "5985:5984"
+#  couchdb:
+#    image: couchdb:latest
+#    environment:
+#      - COUCHDB_USER=guest
+#      - COUCHDB_PASSWORD=guest
+#    ports:
+#      - "5985:5984"
   rabbitmq:
     image: rabbitmq:latest
     environment:
@@ -25,9 +25,12 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - COUCHDB_USER=guest
-      - COUCHDB_PASSWORD=guest
-      - COUCHDB_URL=http://couchdb:5984/
+      - DICTIONARY_SERVER=http://dictionary
+      - OLI_DOCUMENT_SERVER=http://192.168.37.133:18088
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - CELERY_BROKER=amqp://guest:guest@rabbitmq/
+      - CELERY_RESULT_BACKEND=cache+memcached://memcached:11211
     ports:
       - "4004:80"
     depends_on:

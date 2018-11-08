@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+flask = "*"
+flask-restful = "*"
+celery = "*"
+requests = "*"
+python-docx = "*"
+python-memcached = "*"
+"jinja2" = "*"
+
+[dev-packages]
+pylint = "*"
+
+[requires]
+python_version = "3"
