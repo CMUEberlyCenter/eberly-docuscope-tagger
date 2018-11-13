@@ -19,9 +19,11 @@ from flask_restful import Resource, Api, reqparse, abort
 
 from app import create_flask_app
 import tasks
+#import db
 
 app = create_flask_app()
 API = Api(app)
+#logging.basicConfig(level=logging.INFO)
 
 #pylint: disable=R0201
 
@@ -29,10 +31,13 @@ class CheckTagging(Resource):
     """Flask RESTful Resource for checking database for files to tag."""
     def get(self):
         """Responds to GET requests."""
+        #session = app.Session()
         req = requests.get("{}/api/db/list/pending".format(app.config['OLI_DOCUMENT_SERVER']))
         docs = req.json()
+        #docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0')]
+        #session.close()
         if not docs:
-            logging.info("TAGGER: no pending documents available.")
+            logging.warning("TAGGER: no pending documents available.")
             return {'message': 'No pending documents available.'}, 200
         task_def = celery.group([tasks.tag_entry.s(doc['id']) for doc in docs])
         task = task_def()
@@ -40,7 +45,7 @@ class CheckTagging(Resource):
         return {"task_id": task.id, "files": docs}, 201
 API.add_resource(CheckTagging, '/check')
 
-                
+
 class TagEntry(Resource):
     """Flask RESTful Resource for tagging an existing database file."""
     parser = None
@@ -70,7 +75,7 @@ class TagEntry(Resource):
         task_def = celery.group(tag_tasks)
         task = task_def()
         task.save()
-        logging.info("Tagger: GET /tag/%s => task_id: %s", file_id, task.id)
+        logging.warning("Tagger: GET /tag/%s => task_id: %s", file_id, task.id)
         return {"task_id": task.id, "file": file_id}, 201
     def post(self):
         """Responds to POST calls to tag a database entry."""
@@ -83,7 +88,7 @@ class TagEntry(Resource):
         task_def = celery.group(tag_tasks)
         task = task_def()
         task.save()
-        logging.info("Tagger: POST /tag/%s => task_id: %s", file_id, task.id)
+        logging.warning("Tagger: POST /tag/%s => task_id: %s", file_id, task.id)
         return {"task_id": task.id, "file": file_id}, 201
 
 API.add_resource(TagEntry, '/tag')

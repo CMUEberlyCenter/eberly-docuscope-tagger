@@ -11,6 +11,8 @@ requests = "*"
 python-docx = "*"
 python-memcached = "*"
 "jinja2" = "*"
+sqlalchemy = "*"
+mysql-connector-python = "*"
 
 [dev-packages]
 pylint = "*"

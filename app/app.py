@@ -3,6 +3,9 @@ from celery import Celery
 from flask import Flask
 from default_settings import Config
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 def create_flask_app():
     """Create and initialize the Flask application.
 
@@ -11,6 +14,8 @@ def create_flask_app():
     """
     app = Flask(__name__)
     app.config.from_object(Config)
+    engine = create_engine("mysql+mysqlconnector://{0.dbUsername}:{0.dbPassword}@{0.dbHost}:{0.dbPort}/{0.dbName}".format(Config))
+    app.Session = sessionmaker(bind=engine)
     return app
 
 def create_celery_app(app=None):
@@ -34,4 +39,5 @@ def create_celery_app(app=None):
             with app.app_context():
                 return TaskBase.__call__(self, *args, **kwargs)
     celery.Task = ContextTask
+    celery.app = app
     return celery
