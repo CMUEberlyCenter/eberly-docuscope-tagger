@@ -4,8 +4,8 @@ import os
 class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
     DICTIONARY_SERVER = os.getenv('DICTIONARY_SERVER', 'http://dictionary')
-    OLI_DOCUMENT_SERVER = os.getenv('OLI_DOCUMENT_SERVER', 'http://192.168.37.133:18080')
-    dbHost = os.getenv('dbHost', '192.168.37.133')
+    OLI_DOCUMENT_SERVER = os.getenv('OLI_DOCUMENT_SERVER', 'http://192.168.37.135:18080')
+    dbHost = os.getenv('dbHost', '192.168.37.135')
     dbPort = os.getenv('dbPort', 13306)
     dbName = os.getenv('dbName', 'docuscope')
     dbTable = os.getenv('dbTable', 'ds_documents')

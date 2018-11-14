@@ -2,24 +2,15 @@
 
 This depends on the docuscope-dictionary project.
 """
-#import base64
-#import glob
-#import json
 import logging
-#import os
-#import shutil
-#import tempfile
-#import uuid
 
-import requests
+#import requests
 import celery
-#from cloudant import couchdb
 from flask_restful import Resource, Api, reqparse, abort
-#import werkzeug
 
 from app import create_flask_app
 import tasks
-#import db
+import db
 
 app = create_flask_app()
 API = Api(app)
@@ -31,11 +22,9 @@ class CheckTagging(Resource):
     """Flask RESTful Resource for checking database for files to tag."""
     def get(self):
         """Responds to GET requests."""
-        #session = app.Session()
-        req = requests.get("{}/api/db/list/pending".format(app.config['OLI_DOCUMENT_SERVER']))
-        docs = req.json()
-        #docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0')]
-        #session.close()
+        session = app.Session()
+        docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0')]
+        session.close()
         if not docs:
             logging.warning("TAGGER: no pending documents available.")
             return {'message': 'No pending documents available.'}, 200
@@ -44,7 +33,6 @@ class CheckTagging(Resource):
         task.save()
         return {"task_id": task.id, "files": docs}, 201
 API.add_resource(CheckTagging, '/check')
-
 
 class TagEntry(Resource):
     """Flask RESTful Resource for tagging an existing database file."""

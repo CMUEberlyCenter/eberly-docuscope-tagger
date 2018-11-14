@@ -14,7 +14,7 @@ def create_flask_app():
     """
     app = Flask(__name__)
     app.config.from_object(Config)
-    engine = create_engine("mysql+mysqlconnector://{0.dbUsername}:{0.dbPassword}@{0.dbHost}:{0.dbPort}/{0.dbName}".format(Config))
+    engine = create_engine("mysql+mysqldb://{0.dbUsername}:{0.dbPassword}@{0.dbHost}:{0.dbPort}/{0.dbName}".format(Config))
     app.Session = sessionmaker(bind=engine)
     return app
 

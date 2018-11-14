@@ -12,7 +12,7 @@ python-docx = "*"
 python-memcached = "*"
 "jinja2" = "*"
 sqlalchemy = "*"
-mysql-connector-python = "*"
+mysqlclient = "*"
 
 [dev-packages]
 pylint = "*"
