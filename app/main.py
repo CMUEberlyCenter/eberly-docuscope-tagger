@@ -28,7 +28,7 @@ class CheckTagging(Resource):
         if not docs:
             logging.warning("TAGGER: no pending documents available.")
             return {'message': 'No pending documents available.'}, 200
-        task_def = celery.group([tasks.tag_entry.s(doc['id']) for doc in docs])
+        task_def = celery.group([tasks.tag_entry.s(doc) for doc in docs])
         task = task_def()
         task.save()
         return {"task_id": task.id, "files": docs}, 201
