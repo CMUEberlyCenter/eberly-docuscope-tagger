@@ -44,40 +44,31 @@ class TagEntry(Resource):
             self.parser.add_argument(
                 'id', required=True,
                 help='An id of the file reference in the database.')
-            #self.parser.add_argument(
-            #    'data', required=False,
-            #    help='A base64 encoded string of a docx file.')
-            #self.parser.add_argument('dictionary',
-            #                         required=False,
-            #                         default='default',
-            #                         choices=available_dictionaries(),
-            #                         help='DocuScope dictionary id.')
         return self.parser
     def get(self):
         """Responds to GET calls to tag a database entry."""
-        args = self.get_parser().parse_args() #TODO check if args work.
-        #ds_dict = args['dictionary'] or 'default'
-        file_id = args['file_id'] #TODO: sanitize
-        #TODO check for existance of file_id
-        tag_tasks = [tasks.tag_entry.s(file_id)]
-        task_def = celery.group(tag_tasks)
-        task = task_def()
-        task.save()
-        logging.warning("Tagger: GET /tag/%s => task_id: %s", file_id, task.id)
-        return {"task_id": task.id, "file": file_id}, 201
+        args = self.get_parser().parse_args()
+        file_id = args['id'] #TODO: sanitize
+        if db.id_exists(app.Session(), file_id):
+            tag_tasks = [tasks.tag_entry.s(file_id)]
+            task_def = celery.group(tag_tasks)
+            task = task_def()
+            task.save()
+            logging.warning("Tagger: GET /tag?id=%s => task_id: %s", file_id, task.id)
+            return {"task_id": task.id, "file": file_id}, 201
+        return {"error": "File {} not found".format(file_id)}, 404
     def post(self):
         """Responds to POST calls to tag a database entry."""
         args = self.get_parser().parse_args()
-        #ds_dict = args['dictionary'] or 'default'
         file_id = args['id'] #TODO: sanitize
-        #file_id = add_filestring_to_db(args['data'], file_id)
-        #TODO check for existance of file_id
-        tag_tasks = [tasks.tag_entry.s(file_id)]
-        task_def = celery.group(tag_tasks)
-        task = task_def()
-        task.save()
-        logging.warning("Tagger: POST /tag/%s => task_id: %s", file_id, task.id)
-        return {"task_id": task.id, "file": file_id}, 201
+        if db.id_exists(app.Session(), file_id):
+            tag_tasks = [tasks.tag_entry.s(file_id)]
+            task_def = celery.group(tag_tasks)
+            task = task_def()
+            task.save()
+            logging.warning("Tagger: POST /tag/%s => task_id: %s", file_id, task.id)
+            return {"task_id": task.id, "file": file_id}, 201
+        return {"error": "File {} not found".format(file_id)}, 404
 
 API.add_resource(TagEntry, '/tag')
 

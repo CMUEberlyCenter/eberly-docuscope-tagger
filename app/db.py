@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String, exists
 from sqlalchemy.ext.declarative import declarative_base
 from default_settings import Config
 
@@ -24,6 +24,9 @@ class Filesystem(Base):
 
     def __repr__(self):
         return "<File(id='{}', state='{}', assignment='{}'>".format(self.id, self.state, self.assignment)
+
+def id_exists(session, file_id):
+    return session.query(exists().where(Filesystem.id==file_id)).scalar()
 
 class DSDictionary(Base):
     __tablename__ = 'dictionaries'

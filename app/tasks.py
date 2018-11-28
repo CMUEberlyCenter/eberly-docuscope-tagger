@@ -93,14 +93,23 @@ def tag_entry(doc_id):
             ds_dict = assignment.dictionary
         else:
             print("Bad Assignment, no dictionary specified, using default")
-
-        doc_dict = create_tag_dict(MSWord.toTOML(doc.json),
-                                   ds_dict)
-        #print("finished tagging")
-        #TODO: check for errors
-        doc_tagged = json.dumps(doc_dict)
-        doc.processed = doc_tagged
-        doc.state = "2"
+        if doc.json:
+            try:
+                doc_dict = create_tag_dict(MSWord.toTOML(doc.json),
+                                           ds_dict)
+                #print("finished tagging")
+                #TODO: check for errors
+                doc_tagged = json.dumps(doc_dict)
+            except:
+                doc.processed = "{0}".format(sys.exc_info())
+                doc.state = "3"
+                raise
+            else:
+                doc.processed = doc_tagged
+                doc.state = "2"
+        else:
+            doc.processed = "ERROR: No file data to process."
+            doc.state = "3"
         session.commit()
     session.close()
 
