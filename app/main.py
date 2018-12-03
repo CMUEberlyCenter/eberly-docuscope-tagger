@@ -25,6 +25,7 @@ class CheckTagging(Resource):
         session = app.Session()
         processing_check = session.query(db.Filesystem.id).filter_by(state = '1').first()
         if processing_check:
+            session.close()
             logging.warning("TAGGER: at least one unprocess file in database, aborting ({})".format(processing_check[0]))
             return {'message': "{} is still awaiting processing, no new documents staged for tagging".format(processing_check[0])}, 200
         docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0').limit(app.config['TASK_LIMIT'])]

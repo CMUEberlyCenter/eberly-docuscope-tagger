@@ -103,6 +103,8 @@ def tag_entry(doc_id):
             except:
                 doc.processed = "{0}".format(sys.exc_info())
                 doc.state = "3"
+                session.commit()
+                session.close()
                 raise
             else:
                 doc.processed = doc_tagged
