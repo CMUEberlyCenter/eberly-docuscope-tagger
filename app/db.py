@@ -1,6 +1,5 @@
 from sqlalchemy import Column, String, exists
 from sqlalchemy.ext.declarative import declarative_base
-from default_settings import Config
 
 Base = declarative_base()
 
