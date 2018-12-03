@@ -23,12 +23,12 @@ class CheckTagging(Resource):
     def get(self):
         """Responds to GET requests."""
         session = app.Session()
-        processing_check = session.query(db.Filesystem.id).filter_by(state = '1').first()
+        processing_check = session.query(db.Filesystem.id).filter_by(state='1').first()
         if processing_check:
             session.close()
             logging.warning("TAGGER: at least one unprocess file in database, aborting ({})".format(processing_check[0]))
             return {'message': "{} is still awaiting processing, no new documents staged for tagging".format(processing_check[0])}, 200
-        docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0').limit(app.config['TASK_LIMIT'])]
+        docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state='0').limit(app.config['TASK_LIMIT'])]
         session.close()
         if not docs:
             logging.warning("TAGGER: no pending documents available.")
@@ -54,7 +54,10 @@ class TagEntry(Resource):
         """Responds to GET calls to tag a database entry."""
         args = self.get_parser().parse_args()
         file_id = args['id'] #TODO: sanitize
-        if db.id_exists(app.Session(), file_id):
+        session = app.Session()
+        id_exists = db.id_exists(session, file_id)
+        session.close()
+        if id_exists:
             tag_tasks = [tasks.tag_entry.s(file_id)]
             task_def = celery.group(tag_tasks)
             task = task_def()
@@ -66,7 +69,10 @@ class TagEntry(Resource):
         """Responds to POST calls to tag a database entry."""
         args = self.get_parser().parse_args()
         file_id = args['id'] #TODO: sanitize
-        if db.id_exists(app.Session(), file_id):
+        session = app.Session()
+        id_exists = db.id_exists(session, file_id)
+        session.close()
+        if id_exists:
             tag_tasks = [tasks.tag_entry.s(file_id)]
             task_def = celery.group(tag_tasks)
             task = task_def()

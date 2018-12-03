@@ -1,6 +1,8 @@
 """Implements the distributed Celery tasks for tagging files using DocuScope."""
+from contextlib import contextmanager
 import json
-import logging
+#import logging
+import sys
 import requests
 from app import create_celery_app
 #from celery.utils.log import get_task_logger
@@ -13,7 +15,8 @@ celery = create_celery_app()
 
 def get_dictionary(dictionary="default"):
     """Retrieve the dictionary."""
-    req = requests.get("{}/dictionary/{}".format(celery.conf['DICTIONARY_SERVER'], dictionary), timeout=(5.0,120.0))
+    req = requests.get("{}/dictionary/{}".format(
+        celery.conf['DICTIONARY_SERVER'], dictionary), timeout=(5.0, 120.0))
     req.raise_for_status()
     return req.json()
 
@@ -73,47 +76,58 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
     doc_dict['ds_count_dict'] = {str(key): str(value) for key, value in cdict.items()}
     return doc_dict
 
-@celery.task
+@contextmanager
+def session_scope():
+    """Provide a transactional scope around a series of operations."""
+    session = celery.app.Session()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 def tag_entry(doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
     doc_id: a string and is the id of the document in the database."""
-    session = celery.app.Session()
-    doc = session.query(db.Filesystem).filter_by(id = doc_id).first()
-    #TODO: if not doc: throw
-    if doc:
-        doc.state = "1"
+    doc_json = None
+    ds_dict = "default"
+    doc_processed = "ERROR: No file data to process."
+    doc_state = "3"
+    with session_scope() as session:
+        #session = celery.app.Session()
+        doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
+        #TODO: if not doc: throw
+        if doc:
+            doc.state = "1"
         session.commit() # Update state
 
         # Get dictionary
-        ds_dict = "default"
-        assignment = session.query(db.Assignment).filter_by(id = doc.assignment).first()
+        assignment = session.query(db.Assignment).filter_by(id=doc.assignment).first()
         #TODO: if not assignment: throw?
         if assignment:
             ds_dict = assignment.dictionary
         else:
             print("Bad Assignment, no dictionary specified, using default")
-        if doc.json:
-            try:
-                doc_dict = create_tag_dict(MSWord.toTOML(doc.json),
-                                           ds_dict)
-                #print("finished tagging")
-                #TODO: check for errors
-                doc_tagged = json.dumps(doc_dict)
-            except:
-                doc.processed = "{0}".format(sys.exc_info())
-                doc.state = "3"
-                session.commit()
-                session.close()
-                raise
-            else:
-                doc.processed = doc_tagged
-                doc.state = "2"
-        else:
-            doc.processed = "ERROR: No file data to process."
-            doc.state = "3"
-        session.commit()
-    session.close()
-
+        doc_json = doc.json
+    # Do processing outside of session_scope as it is very long.
+    if doc_json:
+        try:
+            doc_dict = create_tag_dict(MSWord.toTOML(doc_json), ds_dict)
+            #print("finished tagging")
+            #TODO: check for errors
+            doc_processed = json.dumps(doc_dict)
+            doc_state = "2"
+        except:
+            doc_processed = "{0}".format(sys.exc_info())
+            doc_state = "3"
+            raise
+    with session_scope() as session:
+        doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
+        doc.processed = doc_processed
+        doc.state = doc_state
 if __name__ == '__main__':
     celery.start()
