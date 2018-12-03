@@ -89,6 +89,7 @@ def session_scope():
     finally:
         session.close()
 
+@celery.task
 def tag_entry(doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
