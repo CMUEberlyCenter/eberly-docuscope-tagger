@@ -7,10 +7,14 @@ stages:
   - build
   - test
   - release
+  - deploy
 
 variables:
+  DOCKER_DRIVER: overlay2
   REF_CONTAINER: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
+  REF_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}:latest
   CELERY_CONTAINER: ${CI_REGISTRY_IMAGE}/task:${CI_COMMIT_REF_SLUG}
+  CELERY_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}/task:latest
 
 before_script:
   - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
@@ -24,5 +28,23 @@ build_web:
 build_celery:
   stage: build
   script:
-    - docker build -t "$CELERY_CONTAINER" -f Dockerfile-celery .
-    - docker push "$CELERY_CONTAINER"
+    - docker build -t "${CELERY_CONTAINER}" -f Dockerfile-celery .
+    - docker push "${CELERY_CONTAINER}"
+
+release_web:
+  stage: release
+  script:
+    - docker pull "${REF_CONTAINER}"
+    - docker tag "${REF_CONTAINER}" "${REF_CONTAINER_RELEASE}"
+    - docker push "${REF_CONTAINER_RELEASE}"
+  only:
+    - master
+
+release_celery:
+  stage: release
+  script:
+    - docker pull "${CELERY_CONTAINER}"
+    - docker tag "${CELERY_CONTAINER}" "${CELERY_CONTAINER_RELEASE}"
+    - docker push "${CELERY_CONTAINER_RELEASE}"
+  only:
+    - master
