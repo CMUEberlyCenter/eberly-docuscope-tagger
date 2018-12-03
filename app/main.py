@@ -23,7 +23,11 @@ class CheckTagging(Resource):
     def get(self):
         """Responds to GET requests."""
         session = app.Session()
-        docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0')]
+        processing_check = session.query(db.Filesystem.id).filter_by(state = '1').first()
+        if processing_check:
+            logging.warning("TAGGER: at least one unprocess file in database, aborting ({})".format(processing_check[0]))
+            return {'message': "{} is still awaiting processing, no new documents staged for tagging".format(processing_check[0])}, 200
+        docs = [doc[0] for doc in session.query(db.Filesystem.id).filter_by(state = '0').limit(5)]
         session.close()
         if not docs:
             logging.warning("TAGGER: no pending documents available.")
@@ -98,17 +102,20 @@ def task_status(task_id):
 class TagJobStatus(Resource):
     """Flask Restful Resource for checking on the status of a tagging job."""
     parser = None
-    def post(self):
-        """Responds to POST request for the status of a tagging job."""
+    def get_parser(self):
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument('task_id', required=True,
                                      help='ID of a tag job.')
-        args = self.parser.parse_args()
+        return self.parser
+    def post(self):
+        """Responds to POST request for the status of a tagging job."""
+        args = self.get_parser().parse_args()
         return task_status(args['task_id'])
     def get(self):
         """Responds to GET messages for the status of a tagging job."""
-        abort(501, message="GET not yet supported.")
+        args = self.get_parser().parse_args()
+        return task_status(args['task_id'])
 API.add_resource(TagJobStatus, '/tag_status')
 
 @app.route("/")
