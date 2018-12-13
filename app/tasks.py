@@ -1,8 +1,10 @@
 """Implements the distributed Celery tasks for tagging files using DocuScope."""
+from collections import Counter
 from contextlib import contextmanager
 import json
 #import logging
 import sys
+import re
 import requests
 from app import create_celery_app
 #from celery.utils.log import get_task_logger
@@ -35,17 +37,7 @@ def countdict(target_list):
     - target_list
 
     Returns: {(word, word): count,...}"""
-    pairs = []
-    while len(target_list) > 1:
-        first = target_list[0]
-        second = target_list[1]
-        tpl = (first, second)
-        pairs.append(tpl)
-        target_list = target_list[1:]
-    out = {}
-    for i in pairs:
-        out[i] = out.get(i, 0) + 1
-    return out
+    return Counter(zip(target_list, target_list[1:]))
 
 def create_tag_dict(toml_string, ds_dictionary="default"):
     """Use DocuScope tagger to analyze a string.
@@ -58,8 +50,8 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
     A dictionary of DocuScope tag statistics."""
     result = create_ds_tagger(ds_dictionary).tag_string(toml_string)
     doc_dict = {
-        'ds_output': result['format_output'],
-        'ds_num _included_tokens': result['num_included_tokens'],
+        'ds_output': re.sub('(\n|\s)+', ' ', result['format_output']),
+        'ds_num_included_tokens': result['num_included_tokens'],
         'ds_num_tokens': result['num_tokens'],
         'ds_num_word_tokens': result['num_word_tokens'],
         'ds_num_excluded_tokens': result['num_excluded_tokens'],
@@ -73,7 +65,7 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
         tag_dict[key] = ds_value
     doc_dict['ds_tag_dict'] = tag_dict
     cdict = countdict(result['tag_chain'])
-    doc_dict['ds_count_dict'] = {str(key): str(value) for key, value in cdict.items()}
+    doc_dict['ds_count_dict'] = {str(key): value for key, value in cdict.items()}
     return doc_dict
 
 @contextmanager
@@ -89,7 +81,7 @@ def session_scope():
     finally:
         session.close()
 
-@celery.task(bind=True, default_retry_delay=5*60, max_retries=5, rate_limit=1) # retry in 5 minutes and limit 1/s to minimize collisions.
+@celery.task(bind=True, default_retry_delay=5*59, max_retries=5, rate_limit=1) # retry in 4:55 minutes and limit 1/s to minimize collisions.
 def tag_entry(self, doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
@@ -100,7 +92,6 @@ def tag_entry(self, doc_id):
     doc_state = "3"
     try:
         with session_scope() as session:
-            #session = celery.app.Session()
             doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
             #TODO: if not doc: throw
             if doc:
@@ -113,7 +104,6 @@ def tag_entry(self, doc_id):
                     print("Bad Assignment, no dictionary specified, using default")
                 doc_json = doc.json
                 doc.state = "1"
-                #session.commit() # Update state
             else:
                 print("Could not load {}!".format(doc_id))
     except Exception as exc:
