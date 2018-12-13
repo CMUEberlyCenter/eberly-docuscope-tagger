@@ -1,9 +1,11 @@
+"""Schemas for the SQL DocuScope sidecar database."""
 from sqlalchemy import Column, String, exists
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
 class Filesystem(Base):
+    """filesystem table for storing uploaded files."""
     __tablename__ = 'filesystem'
     id = Column(String(40), primary_key=True)
     name = Column(String(200))
@@ -17,23 +19,27 @@ class Filesystem(Base):
     fullname = Column(String(100))
     state = Column(String(5))
     ownedby = Column(String(5))
-    json = Column(String)
+    json = Column(String) #sqlalchemy.dialects.mysql.JSON
     processed = Column(String)
     pdf = Column(String)
 
     def __repr__(self):
-        return "<File(id='{}', state='{}', assignment='{}'>".format(self.id, self.state, self.assignment)
+        return "<File(id='{}', state='{}', assignment='{}'>"\
+            .format(self.id, self.state, self.assignment)
 
 def id_exists(session, file_id):
-    return session.query(exists().where(Filesystem.id==file_id)).scalar()
+    """Check if the given file_id exists in the database."""
+    return session.query(exists().where(Filesystem.id == file_id)).scalar()
 
 class DSDictionary(Base):
+    """A table of valid DocuScope dictionaries."""
     __tablename__ = 'dictionaries'
     name = Column(String(50), primary_key=True)
     def __repr__(self):
         return "<DS_Dictionary(name='{}')>".format(self.name)
 
 class Assignment(Base):
+    """A table of assignments."""
     __tablename__ = 'assignments'
     id = Column(String(50), primary_key=True)
     dictionary = Column(String(50))
@@ -41,5 +47,5 @@ class Assignment(Base):
     course = Column(String(150))
     instructor = Column(String(150))
     def __repr__(self):
-        return "<Assignment(id='{}', name='{}', dictionary='{}', ".format(self.id, self.name, self.dictionary)
-
+        return "<Assignment(id='{}', name='{}', dictionary='{}', "\
+            .format(self.id, self.name, self.dictionary)

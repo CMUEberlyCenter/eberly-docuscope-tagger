@@ -50,7 +50,7 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
     A dictionary of DocuScope tag statistics."""
     result = create_ds_tagger(ds_dictionary).tag_string(toml_string)
     doc_dict = {
-        'ds_output': re.sub('(\n|\s)+', ' ', result['format_output']),
+        'ds_output': re.sub(r'(\n|\s)+', ' ', result['format_output']),
         'ds_num_included_tokens': result['num_included_tokens'],
         'ds_num_tokens': result['num_tokens'],
         'ds_num_word_tokens': result['num_word_tokens'],
@@ -81,7 +81,8 @@ def session_scope():
     finally:
         session.close()
 
-@celery.task(bind=True, default_retry_delay=5*59, max_retries=5, rate_limit=1) # retry in 4:55 minutes and limit 1/s to minimize collisions.
+# retry in 4:55 minutes and limit 1/s to minimize collisions.
+@celery.task(bind=True, default_retry_delay=5*59, max_retries=5, rate_limit=1)
 def tag_entry(self, doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
@@ -107,8 +108,9 @@ def tag_entry(self, doc_id):
             else:
                 print("Could not load {}!".format(doc_id))
     except Exception as exc:
-        raise self.retry(exc=exc) # most likely a mysql network error and hopefully a delay will fix it.
-        # Do processing outside of session_scope as it is very long.
+        # most likely a mysql network error and hopefully a delay will fix it.
+        raise self.retry(exc=exc)
+    # Do processing outside of session_scope as it is very long.
     if doc_json:
         try:
             doc_dict = create_tag_dict(MSWord.toTOML(doc_json), ds_dict)

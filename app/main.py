@@ -44,6 +44,7 @@ class TagEntry(Resource):
     parser = None
     def get_parser(self):
         """Initialize and return the request body parser."""
+        # TODO: move to marshmallow as reqparse is getting deprecated.
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument(
@@ -110,6 +111,8 @@ class TagJobStatus(Resource):
     """Flask Restful Resource for checking on the status of a tagging job."""
     parser = None
     def get_parser(self):
+        """Initialize and return the request body parser."""
+        # TODO: move to marshmallow as reqparse is getting deprecated.
         if not self.parser:
             self.parser = reqparse.RequestParser()
             self.parser.add_argument('task_id', required=True,

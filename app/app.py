@@ -1,10 +1,9 @@
 """Utility functions for initializing and creating application interfaces."""
 from celery import Celery
 from flask import Flask
-from default_settings import Config
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from default_settings import Config
 
 def create_flask_app():
     """Create and initialize the Flask application.
