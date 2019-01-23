@@ -89,7 +89,7 @@ def tag_entry(self, doc_id):
     doc_id: a string and is the id of the document in the database."""
     doc_json = None
     ds_dict = "default"
-    doc_processed = "ERROR: No file data to process."
+    doc_processed = '{"ERROR": "No file data to process."}'
     doc_state = "3"
     try:
         with session_scope() as session:
@@ -123,7 +123,7 @@ def tag_entry(self, doc_id):
             doc_processed = "{0}".format(sys.exc_info())
             doc_state = "3"
             # no retry as this will likely be an unrecoverable error.
-            raise
+            #raise #do not reraise as that causes gridlock, raise after db update?
     try:
         with session_scope() as session:
             doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
