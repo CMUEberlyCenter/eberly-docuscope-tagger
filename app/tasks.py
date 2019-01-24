@@ -3,7 +3,7 @@ from collections import Counter
 from contextlib import contextmanager
 import json
 #import logging
-import sys
+import sys, traceback
 import re
 import requests
 from app import create_celery_app
@@ -89,7 +89,7 @@ def tag_entry(self, doc_id):
     doc_id: a string and is the id of the document in the database."""
     doc_json = None
     ds_dict = "default"
-    doc_processed = "ERROR: No file data to process."
+    doc_processed = '{"ERROR": "No file data to process."}'
     doc_state = "3"
     try:
         with session_scope() as session:
@@ -119,11 +119,12 @@ def tag_entry(self, doc_id):
             doc_processed = json.dumps(doc_dict)
             doc_state = "2"
         except Exception as exc:
-            print(exc)
-            doc_processed = "{0}".format(sys.exc_info())
+            traceback.print_exc()
+            doc_processed = json.dumps({'error': "{0}".format(exc),
+                                        'trace': traceback.format_exc()})
             doc_state = "3"
             # no retry as this will likely be an unrecoverable error.
-            raise
+            # Do not re-raise as it causes gridlock #4
     try:
         with session_scope() as session:
             doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
