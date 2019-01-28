@@ -1,21 +1,30 @@
 """Defines and sets default values for configuation object."""
 import os
+from pathlib import Path
+
+def get_secret(env_var, default=None):
+    """Retrieves the value of the given environment variable prefering any
+    {env_var}_FILE variation to work with docker secrets."""
+    efile = os.getenv("{}_FILE".format(env_var))
+    return Path(efile).read_text().strip() if efile else os.getenv(env_var, default)
 
 class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
     DICTIONARY_SERVER = os.getenv('DICTIONARY_SERVER', 'http://dictionary')
     TASK_LIMIT = os.getenv('TASK_LIMIT', '3')
-    dbHost = os.getenv('dbHost', 'mysql')
-    dbPort = os.getenv('dbPort', '3306')
-    dbName = os.getenv('dbName', 'docuscope')
-    dbTable = os.getenv('dbTable', 'filesystem')
-    dbUsername = os.getenv('dbUsername', 'root')
-    dbPassword = os.getenv('dbPassword', 'rootpw')
-    #OLI_DOCUMENT_SERVER = os.getenv('OLI_DOCUMENT_SERVER', 'http://192.168.37.135:18080')
-    #COUCHDB_USER = os.getenv('COUCHDB_USER', 'guest')
-    #COUCHDB_PASSWORD = os.getenv('COUCHDB_PASSWORD', 'guest')
-    #COUCHDB_URL = os.getenv('COUCHDB_URL', 'http://couchdb:5984')
-    RABBITMQ_DEFAULT_USER = os.getenv('RABBITMQ_DEFAULT_USER', 'guest')
-    RABBITMQ_DEFAULT_PASS = os.getenv('RABBITMQ_DEFAULT_PASS', 'guest')
-    CELERY_BROKER = os.getenv('CELERY_BROKER', 'amqp://guest:guest@rabbitmq/')
-    CELERY_RESULT_BACKEND = os.getenv('CELERY_BACKEND', 'cache+memcached://memcached:11211')
+    RABBITMQ_DEFAULT_USER = get_secret('RABBITMQ_DEFAULT_USER', 'guest')
+    RABBITMQ_DEFAULT_PASS = get_secret('RABBITMQ_DEFAULT_PASS_FILE', 'guest')
+    CELERY_BROKER = "amqp://{user}:{passwd}@{host}/".format(
+        user=get_secret('RABBITMQ_DEFAULT_USER', 'guest'),
+        passwd=get_secret('RABBITMQ_DEFAULT_PASS', 'guest'),
+        host=os.getenv('CELERY_BROKER_SERVER', 'rabbitmq'))
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND',
+                                      'cache+memcached://memcached:11211')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_DATABASE_URI = "{prot}://{user}:{passwd}@{host}:{port}/{database}".format(
+        prot='mysql+mysqldb',
+        user=get_secret('MYSQL_USER', 'root'),
+        passwd=get_secret('MYSQL_PASSWORD', 'rootpw'),
+        host=os.getenv('DB_HOST', 'mysql'),
+        port=os.getenv('DB_PORT', '3306'),
+        database=os.getenv('MYSQL_DATABASE', 'docuscope'))

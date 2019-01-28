@@ -6,11 +6,11 @@ import json
 import sys, traceback
 import re
 import requests
-from app import create_celery_app
+from create_app import create_celery_app
 #from celery.utils.log import get_task_logger
 from Ity.ItyTagger import ItyTagger
 import MSWord
-import db
+import ds_db
 
 celery = create_celery_app()
 #LOGGER = get_task_logger(__name__)
@@ -93,11 +93,11 @@ def tag_entry(self, doc_id):
     doc_state = "3"
     try:
         with session_scope() as session:
-            doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
+            doc = session.query(ds_db.Filesystem).filter_by(id=doc_id).first()
             #TODO: if not doc: throw
             if doc:
                 # Get dictionary
-                assignment = session.query(db.Assignment).filter_by(id=doc.assignment).first()
+                assignment = session.query(ds_db.Assignment).filter_by(id=doc.assignment).first()
                 #TODO: if not assignment: throw?
                 if assignment:
                     ds_dict = assignment.dictionary
@@ -127,7 +127,7 @@ def tag_entry(self, doc_id):
             # Do not re-raise as it causes gridlock #4
     try:
         with session_scope() as session:
-            doc = session.query(db.Filesystem).filter_by(id=doc_id).first()
+            doc = session.query(ds_db.Filesystem).filter_by(id=doc_id).first()
             if doc:
                 doc.processed = doc_processed
                 doc.state = doc_state
