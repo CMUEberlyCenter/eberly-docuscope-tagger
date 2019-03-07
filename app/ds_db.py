@@ -1,10 +1,10 @@
 """Schemas for the SQL DocuScope sidecar database."""
-from sqlalchemy import BINARY, Column, Enum, JSON, \
+from sqlalchemy import VARBINARY, Column, Enum, Integer, JSON, \
     LargeBinary, SmallInteger, String, TIMESTAMP, exists
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
-UUID = BINARY(16)
+UUID = VARBINARY(16)
 TINY_TEXT = String(255)
 
 class Filesystem(Base): #pylint: disable=R0903
@@ -13,7 +13,7 @@ class Filesystem(Base): #pylint: disable=R0903
 
     id = Column(UUID, primary_key=True)
     name = Column(TINY_TEXT)
-    assignment = Column(UUID)
+    assignment = Column(Integer)
     owner = Column(TINY_TEXT)
     created = Column(TIMESTAMP)
     fullname = Column(TINY_TEXT)
@@ -46,7 +46,8 @@ class Assignment(Base): #pylint: disable=R0903
     """A table of assignments."""
     __tablename__ = 'assignments'
 
-    id = Column(UUID, primary_key=True)
+    id = Column(Integer, primary_key=True)
+    oli_id = Column(VARBINARY(20))
     dictionary = Column(SmallInteger)
     name = Column(TINY_TEXT)
     course = Column(TINY_TEXT)
