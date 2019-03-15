@@ -6,7 +6,7 @@ import json
 #import logging
 import traceback
 import re
-import requests
+#import requests
 from create_app import create_celery_app
 #from celery.utils.log import get_task_logger
 from Ity.ItyTagger import ItyTagger
@@ -17,15 +17,17 @@ celery = create_celery_app()
 #LOGGER = get_task_logger(__name__)
 
 #depricated
-def get_dictionary(dictionary="default"):
-    """Retrieve the dictionary."""
-    req = requests.get("{}/dictionary/{}".format(
-        celery.conf['DICTIONARY_SERVER'], dictionary), timeout=(5.0, 120.0))
-    req.raise_for_status()
-    return req.json()
+#def get_dictionary(dictionary="default"):
+#    """Retrieve the dictionary."""
+#    req = requests.get("{}/dictionary/{}".format(
+#        celery.conf['DICTIONARY_SERVER'], dictionary), timeout=(5.0, 120.0))
+#    req.raise_for_status()
+#    return req.json()
 
 def get_dictionary_file(dictionary="default"):
     """Retrieve the dictionary from local file."""
+    #TODO: add checks for file existance and valid dictionary.
+    #TODO: backup to get_dictionary?
     with gzip.open("/app/dictionaries/{}.json.gz".format(dictionary), 'rt') as jin:
         data = json.loads(jin.read())
     return data
