@@ -90,21 +90,22 @@ def tag_entry(self, doc_id):
     doc_json = None
     ds_dict = "default"
     doc_processed = '{"ERROR": "No file data to process."}'
-    doc_state = "3"
+    doc_state = "error"
+    print("Tring to tag {}".format(doc_id))
     try:
         with session_scope() as session:
-            doc = session.query(ds_db.Filesystem).filter_by(id=doc_id).first()
+            print("Setting up query")
+            qry = session.query(ds_db.Filesystem.content, ds_db.DSDictionary.name).\
+                  filter(ds_db.Filesystem.id==doc_id).\
+                  filter(ds_db.Assignment.id==ds_db.Filesystem.assignment).\
+                  filter(ds_db.DSDictionary.id==ds_db.Assignment.dictionary)
+            doc_json, ds_dict = qry.first()
             #TODO: if not doc: throw
-            if doc:
-                # Get dictionary
-                assignment = session.query(ds_db.Assignment).filter_by(id=doc.assignment).first()
-                #TODO: if not assignment: throw?
-                if assignment:
-                    ds_dict = assignment.dictionary
-                else:
-                    print("Bad Assignment, no dictionary specified, using default")
-                doc_json = doc.json
-                doc.state = "1"
+            if doc_json: # first should return None if 0 entries match
+                session.query(ds_db.Filesystem)\
+                       .filter(ds_db.Filesystem.id==doc_id)\
+                       .update({"state": "submitted"},
+                               synchronize_session=False)
             else:
                 print("Could not load {}!".format(doc_id))
     except Exception as exc:
@@ -114,25 +115,23 @@ def tag_entry(self, doc_id):
     if doc_json:
         try:
             doc_dict = create_tag_dict(MSWord.toTOML(doc_json), ds_dict)
-            #print("finished tagging")
             #TODO: check for errors
             doc_processed = json.dumps(doc_dict)
-            doc_state = "2"
+            doc_state = "tagged"
         except Exception as exc:
             traceback.print_exc()
             doc_processed = json.dumps({'error': "{0}".format(exc),
                                         'trace': traceback.format_exc()})
-            doc_state = "3"
+            doc_state = "error"
             # no retry as this will likely be an unrecoverable error.
             # Do not re-raise as it causes gridlock #4
     try:
         with session_scope() as session:
-            doc = session.query(ds_db.Filesystem).filter_by(id=doc_id).first()
-            if doc:
-                doc.processed = doc_processed
-                doc.state = doc_state
-            else:
-                print("Could not update {} (state={})!".format(doc_id, doc_state))
+            doc = session.query(ds_db.Filesystem)\
+                         .filter_by(id=doc_id)\
+                         .update({"processed": doc_processed,
+                                  "state": doc_state})
+
     except Exception as exc:
         raise self.retry(exc=exc)
 if __name__ == '__main__':
