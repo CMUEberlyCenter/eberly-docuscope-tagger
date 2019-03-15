@@ -1,39 +1,37 @@
 """Schemas for the SQL DocuScope sidecar database."""
+import uuid
 from sqlalchemy import VARBINARY, Boolean, Column, Enum, Integer, JSON, \
     ForeignKey, LargeBinary, SmallInteger, String, TIMESTAMP, exists
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import relationship
-import uuid
 
 Base = declarative_base()
 TINY_TEXT = String(255)
 
 class UUID(TypeDecorator):
     """A sqlalchemy type for handling UUIDs stored as bytes."""
+    #pylint: disable=W0223
     impl = VARBINARY(16)
 
     def process_bind_param(self, value, dialect):
         """When binding the parameter, convert to bytes."""
         if value is None:
             return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                if isinstance(value, str):
-                    return uuid.UUID(value).bytes
-                if isinstance(value, bytes):
-                    return uuid.UUID(bytes=value).bytes
+        if not isinstance(value, uuid.UUID):
+            if isinstance(value, str):
                 return uuid.UUID(value).bytes
-            else:
-                return value.bytes
+            if isinstance(value, bytes):
+                return uuid.UUID(bytes=value).bytes
+            return uuid.UUID(value).bytes
+        return value.bytes
     def process_result_value(self, value, dialect):
         """When processing results, convert to UUID."""
         if value is None:
             return value
-        else:
-            if not isinstance(value, uuid.UUID):
-                value = uuid.UUID(bytes=value)
-            return value
+        if not isinstance(value, uuid.UUID):
+            value = uuid.UUID(bytes=value)
+        return value
 
 class Filesystem(Base): #pylint: disable=R0903
     """filesystem table for storing uploaded files."""

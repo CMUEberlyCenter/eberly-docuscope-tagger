@@ -4,7 +4,6 @@ This depends on the docuscope-dictionary project.
 """
 import logging
 
-#import requests
 import celery
 from flask_restful import Resource, Api, reqparse, abort
 
@@ -12,7 +11,7 @@ from create_app import create_flask_app
 import tasks
 from ds_db import Filesystem, id_exists
 
-app = create_flask_app()
+app = create_flask_app() #pylint: disable=C0103
 API = Api(app)
 #logging.basicConfig(level=logging.INFO)
 
@@ -30,8 +29,12 @@ class CheckTagging(Resource):
             logging.warning(
                 "At least one unprocessed file in database, aborting (%s)",
                 processing_check[0])
-            return {'message': "{} is still awaiting processing, no new documents staged for tagging".format(processing_check[0])}, 200
-        docs = [str(doc[0]) for doc in session.query(Filesystem.id).filter_by(state='pending').limit(app.config['TASK_LIMIT'])]
+            return {'message':
+                    "{} is still awaiting processing, no new documents staged for tagging"
+                    .format(processing_check[0])}, 200
+        docs = [str(doc[0]) for doc in
+                session.query(Filesystem.id)
+                .filter_by(state='pending').limit(app.config['TASK_LIMIT'])]
         session.close()
         if not docs:
             logging.info("TAGGER: no pending documents available.")
@@ -59,9 +62,9 @@ class TagEntry(Resource):
         args = self.get_parser().parse_args()
         file_id = args['id'] #TODO: sanitize
         session = app.Session()
-        id_exists = id_exists(session, file_id)
+        id_exist = id_exists(session, file_id)
         session.close()
-        if id_exists:
+        if id_exist:
             tag_tasks = [tasks.tag_entry.s(file_id)]
             task_def = celery.group(tag_tasks)
             task = task_def()
@@ -74,9 +77,9 @@ class TagEntry(Resource):
         args = self.get_parser().parse_args()
         file_id = args['id'] #TODO: sanitize
         session = app.Session()
-        id_exists = id_exists(session, file_id)
+        id_exist = id_exists(session, file_id)
         session.close()
-        if id_exists:
+        if id_exist:
             tag_tasks = [tasks.tag_entry.s(file_id)]
             task_def = celery.group(tag_tasks)
             task = task_def()

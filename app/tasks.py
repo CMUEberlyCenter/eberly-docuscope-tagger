@@ -3,7 +3,7 @@ from collections import Counter
 from contextlib import contextmanager
 import json
 #import logging
-import sys, traceback
+import traceback
 import re
 import requests
 from create_app import create_celery_app
@@ -96,14 +96,14 @@ def tag_entry(self, doc_id):
         with session_scope() as session:
             print("Setting up query")
             qry = session.query(ds_db.Filesystem.content, ds_db.DSDictionary.name).\
-                  filter(ds_db.Filesystem.id==doc_id).\
-                  filter(ds_db.Assignment.id==ds_db.Filesystem.assignment).\
-                  filter(ds_db.DSDictionary.id==ds_db.Assignment.dictionary)
+                  filter(ds_db.Filesystem.id == doc_id).\
+                  filter(ds_db.Assignment.id == ds_db.Filesystem.assignment).\
+                  filter(ds_db.DSDictionary.id == ds_db.Assignment.dictionary)
             doc_json, ds_dict = qry.first()
             #TODO: if not doc: throw
             if doc_json: # first should return None if 0 entries match
                 session.query(ds_db.Filesystem)\
-                       .filter(ds_db.Filesystem.id==doc_id)\
+                       .filter(ds_db.Filesystem.id == doc_id)\
                        .update({"state": "submitted"},
                                synchronize_session=False)
             else:
@@ -127,10 +127,10 @@ def tag_entry(self, doc_id):
             # Do not re-raise as it causes gridlock #4
     try:
         with session_scope() as session:
-            doc = session.query(ds_db.Filesystem)\
-                         .filter_by(id=doc_id)\
-                         .update({"processed": doc_processed,
-                                  "state": doc_state})
+            session.query(ds_db.Filesystem)\
+                   .filter_by(id=doc_id)\
+                   .update({"processed": doc_processed,
+                            "state": doc_state})
 
     except Exception as exc:
         raise self.retry(exc=exc)
