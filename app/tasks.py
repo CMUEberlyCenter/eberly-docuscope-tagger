@@ -1,6 +1,7 @@
 """Implements the distributed Celery tasks for tagging files using DocuScope."""
 from collections import Counter
 from contextlib import contextmanager
+import gzip
 import json
 #import logging
 import traceback
@@ -15,6 +16,7 @@ import ds_db
 celery = create_celery_app()
 #LOGGER = get_task_logger(__name__)
 
+#depricated
 def get_dictionary(dictionary="default"):
     """Retrieve the dictionary."""
     req = requests.get("{}/dictionary/{}".format(
@@ -22,11 +24,17 @@ def get_dictionary(dictionary="default"):
     req.raise_for_status()
     return req.json()
 
+def get_dictionary_file(dictionary="default"):
+    """Retrieve the dictionary from local file."""
+    with gzip.open("/app/dictionaries/{}.json.gz".format(dictionary), 'rt') as jin:
+        data = json.loads(jin.read())
+    return data
+
 def create_ds_tagger(dictionary):
     """Create tagger using the specified dictionary."""
     #TODO: check if valid dictionary
     dictionary = dictionary or "default"
-    ds_dict = get_dictionary(dictionary)
+    ds_dict = get_dictionary_file(dictionary)
     if not ds_dict:
         return None
     return ItyTagger(dictionary, ds_dict)
@@ -94,7 +102,6 @@ def tag_entry(self, doc_id):
     print("Tring to tag {}".format(doc_id))
     try:
         with session_scope() as session:
-            print("Setting up query")
             qry = session.query(ds_db.Filesystem.content, ds_db.DSDictionary.name).\
                   filter(ds_db.Filesystem.id == doc_id).\
                   filter(ds_db.Assignment.id == ds_db.Filesystem.assignment).\
