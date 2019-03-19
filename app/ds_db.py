@@ -1,7 +1,7 @@
 """Schemas for the SQL DocuScope sidecar database."""
 import uuid
-from sqlalchemy import VARBINARY, Boolean, Column, Enum, Integer, JSON, \
-    ForeignKey, LargeBinary, SmallInteger, String, TIMESTAMP, exists
+from sqlalchemy import Boolean, Column, Enum, Integer, JSON, ForeignKey, \
+    LargeBinary, SmallInteger, String, TIMESTAMP, VARBINARY, exists
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import relationship
@@ -34,7 +34,7 @@ class UUID(TypeDecorator):
         return value
 
 class Filesystem(Base): #pylint: disable=R0903
-    """filesystem table for storing uploaded files."""
+    """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
     id = Column(UUID, primary_key=True)
@@ -54,10 +54,6 @@ class Filesystem(Base): #pylint: disable=R0903
         return "<File(id='{}', state='{}'>"\
             .format(self.id, self.state)
 
-def id_exists(session, file_id):
-    """Check if the given file_id exists in the database."""
-    return session.query(exists().where(Filesystem.id == file_id)).scalar()
-
 class DSDictionary(Base): #pylint: disable=R0903
     """A table of valid DocuScope dictionaries."""
     __tablename__ = 'dictionaries'
@@ -70,7 +66,7 @@ class DSDictionary(Base): #pylint: disable=R0903
         return "<DS_Dictionary(name='{}')>".format(self.name)
 
 class Assignment(Base): #pylint: disable=R0903
-    """A table of assignments."""
+    """The assignments table in the docuscope database."""
     __tablename__ = 'assignments'
 
     id = Column(Integer, primary_key=True)
@@ -87,3 +83,7 @@ class Assignment(Base): #pylint: disable=R0903
     def __repr__(self):
         return "<Assignment(id='{}', name='{}', dictionary='{}', "\
             .format(self.id, self.name, self.oli_id)
+
+def id_exists(session, file_id):
+    """Check if the given file_id exists in the database."""
+    return session.query(exists().where(Filesystem.id == file_id)).scalar()
