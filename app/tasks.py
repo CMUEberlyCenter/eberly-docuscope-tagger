@@ -97,20 +97,21 @@ def tag_entry(self, doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
     doc_id: a string and is the id of the document in the database."""
-    doc_json = None
+    doc_content = None
     ds_dict = "default"
-    doc_processed = '{"ERROR": "No file data to process."}'
+    doc_processed = {"ERROR": "No file data to process."}
     doc_state = "error"
     print("Tring to tag {}".format(doc_id))
     try:
         with session_scope() as session:
-            qry = session.query(ds_db.Filesystem.content, ds_db.DSDictionary.name).\
+            qry = session.query(ds_db.Filesystem.content,
+                                ds_db.DSDictionary.name).\
                   filter(ds_db.Filesystem.id == doc_id).\
                   filter(ds_db.Assignment.id == ds_db.Filesystem.assignment).\
                   filter(ds_db.DSDictionary.id == ds_db.Assignment.dictionary)
-            doc_json, ds_dict = qry.first()
+            doc_content, ds_dict = qry.first()
             #TODO: if not doc: throw
-            if doc_json: # first should return None if 0 entries match
+            if doc_content: # first should return None if 0 entries match
                 session.query(ds_db.Filesystem)\
                        .filter(ds_db.Filesystem.id == doc_id)\
                        .update({"state": "submitted"},
@@ -121,16 +122,16 @@ def tag_entry(self, doc_id):
         # most likely a mysql network error and hopefully a delay will fix it.
         raise self.retry(exc=exc)
     # Do processing outside of session_scope as it is very long.
-    if doc_json:
+    if doc_content:
         try:
-            doc_dict = create_tag_dict(MSWord.toTOML(doc_json), ds_dict)
+            doc_dict = create_tag_dict(MSWord.toTOML(doc_content), ds_dict)
             #TODO: check for errors
-            doc_processed = json.dumps(doc_dict)
+            doc_processed = doc_dict
             doc_state = "tagged"
         except Exception as exc:
             traceback.print_exc()
-            doc_processed = json.dumps({'error': "{0}".format(exc),
-                                        'trace': traceback.format_exc()})
+            doc_processed = {'error': "{0}".format(exc),
+                             'trace': traceback.format_exc()}
             doc_state = "error"
             # no retry as this will likely be an unrecoverable error.
             # Do not re-raise as it causes gridlock #4
