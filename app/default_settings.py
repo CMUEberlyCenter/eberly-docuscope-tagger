@@ -10,7 +10,6 @@ def get_secret(env_var, default=None):
 
 class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
-    DICTIONARY_SERVER = os.getenv('DICTIONARY_SERVER', 'http://dictionary')
     TASK_LIMIT = os.getenv('TASK_LIMIT', '3')
     RABBITMQ_DEFAULT_USER = get_secret('RABBITMQ_DEFAULT_USER', 'guest')
     RABBITMQ_DEFAULT_PASS = get_secret('RABBITMQ_DEFAULT_PASS_FILE', 'guest')
