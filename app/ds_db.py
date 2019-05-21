@@ -6,7 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import relationship
 
-Base = declarative_base()
+BASE = declarative_base()
 TINY_TEXT = String(255)
 
 class UUID(TypeDecorator):
@@ -33,7 +33,7 @@ class UUID(TypeDecorator):
             value = uuid.UUID(bytes=value)
         return value
 
-class Filesystem(Base): #pylint: disable=R0903
+class Filesystem(BASE): #pylint: disable=R0903
     """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
@@ -54,7 +54,7 @@ class Filesystem(Base): #pylint: disable=R0903
         return "<File(id='{}', state='{}'>"\
             .format(self.id, self.state)
 
-class DSDictionary(Base): #pylint: disable=R0903
+class DSDictionary(BASE): #pylint: disable=R0903
     """A table of valid DocuScope dictionaries."""
     __tablename__ = 'dictionaries'
 
@@ -65,7 +65,7 @@ class DSDictionary(Base): #pylint: disable=R0903
     def __repr__(self):
         return "<DS_Dictionary(name='{}')>".format(self.name)
 
-class Assignment(Base): #pylint: disable=R0903
+class Assignment(BASE): #pylint: disable=R0903
     """The assignments table in the docuscope database."""
     __tablename__ = 'assignments'
 
