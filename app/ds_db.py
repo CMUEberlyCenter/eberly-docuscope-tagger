@@ -1,4 +1,4 @@
-"""Schemas for the SQL DocuScope sidecar database."""
+"""Schemas for the SQL DocuScope Writing Sidecar database."""
 import uuid
 from sqlalchemy import Boolean, Column, Enum, Integer, JSON, ForeignKey, \
     LargeBinary, SmallInteger, String, TIMESTAMP, VARBINARY, exists
@@ -86,8 +86,4 @@ class Assignment(BASE): #pylint: disable=R0903
 
 def id_exists(session: Session, file_id):
     """Check if the given file_id exists in the database."""
-    #try:
-    #    uuid.UUID(file_id)
-    #except ValueError:
-    #    return False
     return session.query(exists().where(Filesystem.id == file_id)).scalar()

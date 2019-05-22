@@ -27,6 +27,7 @@ def create_ds_tagger(dictionary):
     if not ds_dict:
         logging.error("Invalid dictionary: %s", dictionary)
         raise FileNotFoundError
+    #TODO: check if valid dictionary
     return ItyTagger(dictionary, ds_dict)
 
 def countdict(target_list):
