@@ -4,18 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-flask = "*"
-flask-restful = "*"
 celery = "*"
-requests = "*"
 python-docx = "*"
 python-memcached = "*"
 "jinja2" = "*"
 sqlalchemy = "*"
 mysqlclient = "*"
+fastapi = "*"
 
 [dev-packages]
 pylint = "*"
+requests = "*"
 
 [requires]
 python_version = "3.7"

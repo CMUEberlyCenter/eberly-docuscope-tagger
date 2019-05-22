@@ -3,27 +3,54 @@ from collections import Counter
 from contextlib import contextmanager
 import gzip
 import json
-#import logging
+import logging
 import os
 import traceback
 import re
-from create_app import create_celery_app
-#from celery.utils.log import get_task_logger
+from celery import Celery, Task
 from Ity.ItyTagger import ItyTagger
 import MSWord
+from db import SESSION
 import ds_db
+from default_settings import Config
 
-celery = create_celery_app()
-#LOGGER = get_task_logger(__name__)
+celery = Celery("docuscope_tagger",
+                backend=Config.CELERY_RESULT_BACKEND,
+                broker=Config.CELERY_BROKER)
+
+class DatabaseTask(Task):
+    _session = None
+
+    @property
+    def session(self):
+        if self._session is None:
+            self._session = SESSION()
+        return self._session
+
+    @contextmanager
+    def session_scope(self):
+        """Provide a transactional scope around a series of operations."""
+        session = self.session
+        try:
+            yield session
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 def get_dictionary_file(dictionary="default"):
     """Retrieve the dictionary from local file."""
-    #TODO: add checks for file existance and valid dictionary.
-    dic_path = os.path.join(celery.conf['DICTIONARY_HOME'],
+    dic_path = os.path.join(Config.DICTIONARY_HOME,
                             "{}.json.gz".format(dictionary))
-    with gzip.open(dic_path, 'rt') as jin:
-        data = json.load(jin)
-    return data
+    if os.path.isfile(dic_path):
+        with gzip.open(dic_path, 'rt') as jin:
+            data = json.load(jin)
+        return data
+    else:
+        logging.error("Unable to find dictionary %s", dic_path)
+    return None
 
 def create_ds_tagger(dictionary):
     """Create tagger using the specified dictionary."""
@@ -71,21 +98,8 @@ def create_tag_dict(toml_string, ds_dictionary="default"):
     doc_dict['ds_count_dict'] = {str(key): value for key, value in cdict.items()}
     return doc_dict
 
-@contextmanager
-def session_scope():
-    """Provide a transactional scope around a series of operations."""
-    session = celery.app.Session()
-    try:
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
 # retry in 4:55 minutes and limit 1/s to minimize collisions.
-@celery.task(bind=True, default_retry_delay=5*59, max_retries=5, rate_limit=1)
+@celery.task(base=DatabaseTask, bind=True, default_retry_delay=5*59, max_retries=5, rate_limit=1)
 def tag_entry(self, doc_id):
     """Uses DocuScope tagger on the document stored in a database.
     Arguments:
@@ -94,9 +108,9 @@ def tag_entry(self, doc_id):
     ds_dict = "default"
     doc_processed = {"ERROR": "No file data to process."}
     doc_state = "error"
-    print("Tring to tag {}".format(doc_id))
+    logging.warning("Tring to tag %s", doc_id)
     try:
-        with session_scope() as session:
+        with self.session_scope() as session:
             qry = session.query(ds_db.Filesystem.content,
                                 ds_db.DSDictionary.name).\
                   filter(ds_db.Filesystem.id == doc_id).\
@@ -112,6 +126,7 @@ def tag_entry(self, doc_id):
             else:
                 print("Could not load {}!".format(doc_id))
     except Exception as exc:
+        logging.error("Error: %s, RETRYING!", exc)
         # most likely a mysql network error and hopefully a delay will fix it.
         raise self.retry(exc=exc)
     # Do processing outside of session_scope as it is very long.
@@ -129,13 +144,15 @@ def tag_entry(self, doc_id):
             # no retry as this will likely be an unrecoverable error.
             # Do not re-raise as it causes gridlock #4
     try:
-        with session_scope() as session:
+        with self.session_scope() as session:
             session.query(ds_db.Filesystem)\
                    .filter_by(id=doc_id)\
                    .update({"processed": doc_processed,
                             "state": doc_state})
 
     except Exception as exc:
+        logging.error(exc)
         raise self.retry(exc=exc)
+
 if __name__ == '__main__':
     celery.start()
