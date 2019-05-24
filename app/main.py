@@ -49,11 +49,17 @@ class ErrorResponse(BaseModel):
     """Schema for error response."""
     detail: Json
 
-@app.get("/check", status_code=HTTP_201_CREATED, response_model=TaskResponse,
-         responses={200: {"model": MessageResponse,
-                          "description": "Successful but no new tagging initiated."},
-                    500: {"model": ErrorResponse,
-                          "description": "Internal Server Error"}})
+@app.get("/check",
+         status_code=HTTP_201_CREATED, response_model=TaskResponse,
+         responses={
+             HTTP_200_OK: {
+                 "model": MessageResponse,
+                 "description": "Successful but no new tagging initiated."},
+             HTTP_500_INTERNAL_ERROR: {
+                 "model": ErrorResponse,
+                 "description": "Internal Server Error"
+             }
+         })
 def check_for_tagging(session: Session = Depends(get_db)):
     """Check for 'submitted' documents in the database and starts tagging them."""
     processing_check = None
@@ -87,8 +93,12 @@ def check_for_tagging(session: Session = Depends(get_db)):
 
 @app.get("/tag/{doc_id}", status_code=HTTP_201_CREATED,
          response_model=TaskResponse,
-         responses={404: {"model": ErrorResponse,
-                          "description": "Document not found in database error."}})
+         responses={
+             HTTP_404_NOT_FOUND: {
+                 "model": ErrorResponse,
+                 "description": "Document not found in database error."
+             }
+         })
 def tag(doc_id: UUID = Path(...,
                             title="Document UUID",
                             description="The UUID of a document in the database."),
@@ -118,10 +128,14 @@ class StatusResponse(BaseModel):
 
 @app.get("/status/{job_id}", response_model=StatusResponse,
          responses={
-             404: {'model': ErrorResponse,
-                   'description': 'Job not found error'},
-             500: {'model': ErrorResponse,
-                   'description': 'Internal Server Error'}})
+             HTTP_404_NOT_FOUND: {
+                 'model': ErrorResponse,
+                 'description': 'Job not found error'},
+             HTTP_500_INTERNAL_ERROR: {
+                 'model': ErrorResponse,
+                 'description': 'Internal Server Error'
+             }
+         })
 async def get_status(
         job_id: UUID = Path(...,
                             title="Job UUID",
