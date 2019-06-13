@@ -55,7 +55,7 @@ class ErrorResponse(BaseModel):
              HTTP_200_OK: {
                  "model": MessageResponse,
                  "description": "Successful but no new tagging initiated."},
-             HTTP_500_INTERNAL_ERROR: {
+             HTTP_500_INTERNAL_SERVER_ERROR: {
                  "model": ErrorResponse,
                  "description": "Internal Server Error"
              }
@@ -131,7 +131,7 @@ class StatusResponse(BaseModel):
              HTTP_404_NOT_FOUND: {
                  'model': ErrorResponse,
                  'description': 'Job not found error'},
-             HTTP_500_INTERNAL_ERROR: {
+             HTTP_500_INTERNAL_SERVER_ERROR: {
                  'model': ErrorResponse,
                  'description': 'Internal Server Error'
              }

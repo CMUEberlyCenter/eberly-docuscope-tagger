@@ -11,6 +11,7 @@ python-memcached = "*"
 sqlalchemy = "*"
 mysqlclient = "*"
 fastapi = "*"
+email-validator = "*"
 
 [dev-packages]
 pylint = "*"
