@@ -10,7 +10,7 @@ def get_secret(env_var, default=None):
 
 class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
-    DICTIONARY_SERVER = os.getenv('DICTIONARY_SERVER', 'http://dictionary')
+    DICTIONARY_HOME = os.getenv('DICTIONARY_HOME', os.path.join('/app', 'dictionaries'))
     TASK_LIMIT = os.getenv('TASK_LIMIT', '3')
     RABBITMQ_DEFAULT_USER = get_secret('RABBITMQ_DEFAULT_USER', 'guest')
     RABBITMQ_DEFAULT_PASS = get_secret('RABBITMQ_DEFAULT_PASS_FILE', 'guest')
@@ -23,8 +23,8 @@ class Config(): #pylint: disable=R0903
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_DATABASE_URI = "{prot}://{user}:{passwd}@{host}:{port}/{database}".format(
         prot='mysql+mysqldb',
-        user=get_secret('MYSQL_USER', 'root'),
-        passwd=get_secret('MYSQL_PASSWORD', 'rootpw'),
-        host=os.getenv('DB_HOST', 'mysql'),
+        user=get_secret('MYSQL_USER', 'docuscope'),
+        passwd=get_secret('MYSQL_PASSWORD', 'docuscope'),
+        host=os.getenv('DB_HOST', '127.0.0.1'),
         port=os.getenv('DB_PORT', '3306'),
         database=os.getenv('MYSQL_DATABASE', 'docuscope'))
