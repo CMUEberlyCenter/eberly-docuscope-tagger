@@ -11,7 +11,7 @@ import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-#from default_settings import Config
+from default_settings import Config
 from ds_tagger import create_tag_dict
 import ds_db
 import MSWord
@@ -21,16 +21,26 @@ PARSER = argparse.ArgumentParser(
     description="Use DocuScope's Ity tagger to process a document in the database.")
 PARSER.add_argument("uuid", nargs='*',
                     help="The id of a document in the DocuScope database.")
-PARSER.add_argument("--db", help="URI of the database. <user>:<pass>@<url>:<port>/<database>",
-                    default="docuscope:docuscope@127.0.0.1:3306/docuscope")
+# no default in following so as to not reveal password.
+PARSER.add_argument(
+    "--db",
+    help="URI of the database. <user>:<pass>@<url>:<port>/<database>")
 PARSER.add_argument('-c', '--check_db', action='store_true',
                     help="Check the database for any 'pending' documents.")
+PARSER.add_argument('-m', '--max_db_documents', type=int, default=-1,
+                    help="Maximum number of 'pending' documents to process.")
 PARSER.add_argument('-v', '--verbose', help="Increase output verbosity.",
                     action="count", default=0)
 ARGS = PARSER.parse_args()
 LEVELS = [logging.WARNING, logging.INFO, logging.DEBUG]
 logging.basicConfig(level=LEVELS[min(len(LEVELS)-1, ARGS.verbose)])
-ENGINE = create_engine("mysql+mysqldb://{}".format(ARGS.db))
+ENGINE = None
+if ARGS.db:
+    logging.info('Database settings from args')
+    ENGINE = create_engine("mysql+mysqldb://{}".format(ARGS.db))
+else:
+    logging.info('Database settings env')
+    ENGINE = create_engine(Config.SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE)
 
 @contextmanager
@@ -109,9 +119,16 @@ def run_tagger(args):
         if check_ids:
             logging.warning("Documents do not exist in database: %s", check_ids)
         if args.check_db:
-            valid_ids.update([str(doc[0]) for doc in
-                              session.query(ds_db.Filesystem.id)
-                              .filter_by(state='pending')])
+            if args.max_db_documents > 0:
+                valid_ids.update([str(doc[0]) for doc in
+                                  session.query(ds_db.Filesystem.id)
+                                  .filter_by(state='pending')
+                                  .limit(args.max_db_documents)])
+
+            else:
+                valid_ids.update([str(doc[0]) for doc in
+                                  session.query(ds_db.Filesystem.id)
+                                  .filter_by(state='pending')])
     logging.info('Tagging: %s', valid_ids)
     if valid_ids:
         with Pool() as pool:

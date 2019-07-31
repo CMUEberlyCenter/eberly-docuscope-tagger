@@ -96,7 +96,7 @@ def check_for_tagging(session: Session = Depends(get_db)):
          responses={
              HTTP_404_NOT_FOUND: {
                  "model": ErrorResponse,
-                 "description": "Document not found in database error."
+                 "description": "Document not found in database."
              }
          })
 def tag(doc_id: UUID = Path(...,

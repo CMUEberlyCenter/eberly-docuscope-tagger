@@ -1,5 +1,5 @@
 Bootstrap: localimage
-From: docuscope-dictionary_latest.sif
+From: docuscope-dictionary.sif
 Stage: dictionary
 
 Bootstrap: docker
