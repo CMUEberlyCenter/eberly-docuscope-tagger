@@ -1,6 +1,9 @@
 """DocuScope Tagger setup and initialization."""
 from collections import Counter
-import json
+try:
+    import ujson as json
+except ImportError:
+    import json
 import re
 import gzip
 import logging
