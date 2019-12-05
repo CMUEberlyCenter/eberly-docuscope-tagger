@@ -26,7 +26,7 @@ import tasks
 app = FastAPI( #pylint: disable=C0103
     title="DocuScope Tagger Service",
     description="Uses DocuScope to tag documents in a database.",
-    version="2.0.2",
+    version="3.0.0",
     contact={'email': 'ringenberg@cmu.edu'}, # unused, need to fix fastapi/applications.py
     license={'name': 'CC BY-NC-SA 4.0',
              'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/'}
