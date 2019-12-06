@@ -12,6 +12,7 @@ sqlalchemy = "*"
 mysqlclient = "*"
 fastapi = "*"
 email-validator = "*"
+ujson = "*"
 
 [dev-packages]
 pylint = "*"
