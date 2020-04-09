@@ -4,7 +4,7 @@ Run with --help to see options.
 import argparse
 from contextlib import contextmanager
 import logging
-from multiprocessing import Pool
+from multiprocessing import Pool #TODO: add shared_memory at python 3.8
 import traceback
 import uuid
 
