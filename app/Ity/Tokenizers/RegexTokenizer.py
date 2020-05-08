@@ -528,10 +528,10 @@ class RegexTokenizer(Tokenizer):
             start = m.start()
 
             # The text content of the whole capture.
-            token_str = m.group()
+            tokens_str = m.group()
 
             # Skip apparently empty captures.
-            if token_str == "":
+            if tokens_str == "":
                 continue
 
             # Save the [original] char length of the entire captured string.
@@ -548,7 +548,7 @@ class RegexTokenizer(Tokenizer):
             # the token type, e.g. self.TYPES.index("WORD") will be added
             # by one of the self._format_token_*() helper methods.
             single_token_list = [None] * len(self.INDEXES.keys())
-            single_token_list[self.INDEXES["STRS"]] = [token_str]
+            single_token_list[self.INDEXES["STRS"]] = [tokens_str]
             single_token_list[self.INDEXES["POS"]] = start
             single_token_list[self.INDEXES["LENGTH"]] = length
 

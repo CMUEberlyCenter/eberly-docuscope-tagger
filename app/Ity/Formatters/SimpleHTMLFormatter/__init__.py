@@ -3,7 +3,7 @@
 import os
 from ...Tokenizers.Tokenizer import Tokenizer
 from ..Formatter import Formatter
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 def pithify(rule_name):
     if type(rule_name) == str:
@@ -32,6 +32,7 @@ class SimpleHTMLFormatter(Formatter):
         # Jinja2 Environment initialization
         self.env = Environment(
             loader=FileSystemLoader(searchpath=self.template_root),
+            autoescape=select_autoescape(['html', 'xml']),
             extensions=[
                 'jinja2.ext.do'
             ]
