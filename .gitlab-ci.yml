@@ -3,14 +3,14 @@ image: docker:latest
 services:
   - docker:dind
 
-include:
-  - template: SAST.gitlab-ci.yml
-
 stages:
   - build
   - test
   - release
   - deploy
+
+include:
+  - template: SAST.gitlab-ci.yml
 
 variables:
   DOCKER_DRIVER: overlay2
