@@ -3,6 +3,9 @@ image: docker:latest
 services:
   - docker:dind
 
+include:
+  - template: SAST.gitlab-ci.yml
+
 stages:
   - build
   - test
@@ -38,8 +41,8 @@ release_web:
     - docker pull "${REF_CONTAINER}"
     - docker tag "${REF_CONTAINER}" "${REF_CONTAINER_RELEASE}"
     - docker push "${REF_CONTAINER_RELEASE}"
-  only:
-    - master
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
 
 release_celery:
   stage: release
@@ -47,5 +50,5 @@ release_celery:
     - docker pull "${CELERY_CONTAINER}"
     - docker tag "${CELERY_CONTAINER}" "${CELERY_CONTAINER_RELEASE}"
     - docker push "${CELERY_CONTAINER_RELEASE}"
-  only:
-    - master
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
