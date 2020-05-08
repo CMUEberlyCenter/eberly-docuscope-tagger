@@ -4,10 +4,13 @@ services:
   - docker:dind
 
 stages:
-  - build
   - test
+  - build
   - release
   - deploy
+
+include:
+  - template: SAST.gitlab-ci.yml
 
 variables:
   DOCKER_DRIVER: overlay2
@@ -19,6 +22,17 @@ variables:
 
 before_script:
   - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+
+
+pylint:
+  stage: test
+  image: python:latest
+  before_script:
+    - pip install --no-cache-dir --upgrade --quiet -r requirements.txt
+    - pip install pylint --quiet
+  script:
+    - pylint --extension-pkg-whitelist=pydantic --disable=R0801 app
+  allow_failure: true
 
 build_web:
   stage: build
@@ -38,8 +52,8 @@ release_web:
     - docker pull "${REF_CONTAINER}"
     - docker tag "${REF_CONTAINER}" "${REF_CONTAINER_RELEASE}"
     - docker push "${REF_CONTAINER_RELEASE}"
-  only:
-    - master
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
 
 release_celery:
   stage: release
@@ -47,5 +61,5 @@ release_celery:
     - docker pull "${CELERY_CONTAINER}"
     - docker tag "${CELERY_CONTAINER}" "${CELERY_CONTAINER_RELEASE}"
     - docker push "${CELERY_CONTAINER_RELEASE}"
-  only:
-    - master
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
