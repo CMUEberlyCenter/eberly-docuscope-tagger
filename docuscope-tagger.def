@@ -1,9 +1,9 @@
-Bootstrap: localimage
-From: docuscope-dictionary.sif
-Stage: dictionary
+#Bootstrap: localimage
+#From: docuscope-dictionary.sif
+#Stage: dictionary
 
 Bootstrap: docker
-From: python:3.7.3-stretch
+From: python:3.9-buster
 Stage: tagger
 
 %help
@@ -12,20 +12,22 @@ for container help:
 
 %labels
         Maintainer Michael Ringenberg <ringenberg@cmu.edu>
-        Version v2.0.0
+        Version v3.0.0-common
 
 %setup
         mkdir -p $SINGULARITY_ROOTFS/app
 
 %files
         app /
+	requirements.txt /
 
-%files from dictionary
-        /app/static /app/dictionaries
+#%files from dictionary
+#        /app/static /app/dictionaries
 
 %post
         pip install --upgrade pip
-        pip install --no-cache-dir --upgrade mysqlclient python-docx sqlalchemy jinja2
+        #pip install --no-cache-dir --upgrade mysqlclient python-docx sqlalchemy jinja2
+	pip install --no-cache-dir --upgrade -r /requirements.txt
 
 %runscript
         exec python /app/cli.py $@

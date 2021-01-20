@@ -4,13 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-celery = "*"
 python-docx = "*"
-python-memcached = "*"
-"jinja2" = "*"
-sqlalchemy = "*"
+Jinja2 = "*"
+SQLAlchemy = "*"
 mysqlclient = "*"
-fastapi = "*"
 email-validator = "*"
 ujson = "*"
 
@@ -20,4 +17,4 @@ requests = "*"
 bandit = "*"
 
 [requires]
-python_version = "3.7"
+python_version = "3.9"

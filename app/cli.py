@@ -4,7 +4,7 @@ Run with --help to see options.
 import argparse
 from contextlib import contextmanager
 import logging
-from multiprocessing import Pool #TODO: add shared_memory at python 3.8
+from multiprocessing import Pool
 import traceback
 import uuid
 
@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from default_settings import Config
-from ds_tagger import create_tag_dict
+from ds_tagger import create_ds_tagger, tag_dict
 import ds_db
 import MSWord
 
@@ -56,7 +56,7 @@ def session_scope():
     finally:
         session.close()
 
-def tag_entry(doc_id):
+def tag_entry(tagger, doc_id):
     """Use DocuScope tagger on the specified document.
     Arguments:
     doc_id: a uuid of the document in the database.
@@ -84,7 +84,8 @@ def tag_entry(doc_id):
             raise FileNotFoundError(doc_id)
     if doc_content:
         try:
-            doc_processed = create_tag_dict(MSWord.toTOML(doc_content), ds_dict)
+            doc_processed = tag_dict(tagger.tag_string(MSWord.toTOML(doc_content)))
+            #doc_processed = create_tag_dict(MSWord.toTOML(doc_content), ds_dict)
             doc_state = "tagged"
             logging.info("Successfully tagged %s", doc_id)
         except Exception as exc: #pylint: disable=W0703
@@ -109,15 +110,23 @@ def valid_uuid(doc_id):
         logging.warning("%s: %s", vexc, doc_id)
         return False
 
+TAGGER = None
+
+def tag(id):
+    return tag_entry(TAGGER, id)
+
 def run_tagger(args):
     """Gathers the document ids and runs the tagger on them (multitreaded)"""
-    ids = {id for id in args.uuid if valid_uuid(id)}
+    ids = {id for id in args.uuid if valid_uuid(id)} # only uuids
     with session_scope() as session:
+        # check if uuids are in database
         valid_ids = {str(doc[0]) for doc in session.query(ds_db.Filesystem.id)
                      .filter(ds_db.Filesystem.id.in_(ids))}
         check_ids = ids.difference(valid_ids)
         if check_ids:
             logging.warning("Documents do not exist in database: %s", check_ids)
+        # If checking the database for 'pending' documents,
+        # add all (limit max number) pending documents to list of ids
         if args.check_db:
             if args.max_db_documents > 0:
                 valid_ids.update([str(doc[0]) for doc in
@@ -129,10 +138,17 @@ def run_tagger(args):
                 valid_ids.update([str(doc[0]) for doc in
                                   session.query(ds_db.Filesystem.id)
                                   .filter_by(state='pending')])
-    logging.info('Tagging: %s', valid_ids)
     if valid_ids:
+        # Create the tagger using default dictionary.
+        logging.info(f'Loading: {Config.DICTIONARY}')
+        global TAGGER
+        TAGGER = create_ds_tagger(Config.DICTIONARY)
+        logging.info(f'Loaded: {Config.DICTIONARY}')
+        logging.info('Tagging: %s', valid_ids)
         with Pool() as pool:
-            pool.map(tag_entry, valid_ids)
+            pool.map(tag, valid_ids)
+    else:
+        logging.info('No documents to tag.')
 
 if __name__ == '__main__':
     run_tagger(ARGS)

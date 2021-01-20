@@ -2,7 +2,7 @@
 __author__ = 'kohlmannj'
 
 import re
-from html.parser import HTMLParser
+from html import unescape
 from .Tokenizer import Tokenizer
 
 
@@ -275,9 +275,9 @@ class RegexTokenizer(Tokenizer):
         # Compile the full tokenization regular expression.
         self.__compile_tokenize_pattern()
         # If we're going to convert entities, we need an HTMLParser instance.
-        self.html_parser = None
-        if self.convert_entities:
-            self.html_parser = HTMLParser()
+        #self.html_parser = None
+        #if self.convert_entities:
+        #    self.html_parser = HTMLParser()
 
     def __compile_tokenize_pattern(self):
         """
@@ -331,9 +331,9 @@ class RegexTokenizer(Tokenizer):
         token_data[self.INDEXES["TYPE"]] = self.TYPES["PUNCTUATION"]
 
         # Make sure we have an HTMLParser instance before continuing.
-        if self.html_parser is not None:
+        if self.convert_entities: # if self.html_parser is not None:
             # Find and convert any HTML entities that may be in this token.
-            converted_token_str = self.html_parser.unescape(token_strs[0])
+            converted_token_str = unescape(token_strs[0])
             # Should we preserve the original token string (and is the
             # converted token string actually different)?
             if self.preserve_original_strs and converted_token_str != token_strs[0]:
