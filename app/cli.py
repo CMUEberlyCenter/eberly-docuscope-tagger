@@ -140,10 +140,10 @@ def run_tagger(args):
                                   .filter_by(state='pending')])
     if valid_ids:
         # Create the tagger using default dictionary.
-        logging.info(f'Loading: {Config.DICTIONARY}')
+        logging.info(f'Loading dictionary: {Config.DICTIONARY}')
         global TAGGER
         TAGGER = create_ds_tagger(Config.DICTIONARY)
-        logging.info(f'Loaded: {Config.DICTIONARY}')
+        logging.info(f'Loaded dictionary: {Config.DICTIONARY}')
         logging.info('Tagging: %s', valid_ids)
         with Pool() as pool:
             pool.map(tag, valid_ids)

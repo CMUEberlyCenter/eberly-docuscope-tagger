@@ -144,14 +144,16 @@ class DocuscopeTagger(Tagger):
                 rule_dict = self._ds_dict["rules"][token_ds_word]
                 for next_token_ds_word in self._get_ds_words_for_token_index(next_token_index):
                     try:  # for the rd[nw]
-                        for ds_lat, ds_rule in rule_dict[next_token_ds_word]:
-                            # check to see if the rule applies
-                            ds_rule_len = len(ds_rule)
-                            if ds_rule_len > best_ds_rule_len and self._long_rule_applies_at_token_index(ds_rule):
-                                # keep the "best" rule
-                                best_ds_rule = ds_rule
-                                best_ds_lat = ds_lat
-                                best_ds_rule_len = ds_rule_len
+                        for ds_lat, ds_rules in rule_dict[next_token_ds_word].items():
+                            for ds_partial_rule in ds_rules:
+                                ds_rule = [token_ds_word, next_token_ds_word, *ds_partial_rule]
+                                # check to see if the rule applies
+                                ds_rule_len = len(ds_rule)
+                                if ds_rule_len > best_ds_rule_len and self._long_rule_applies_at_token_index(ds_rule):
+                                    # keep the "best" rule
+                                    best_ds_rule = ds_rule
+                                    best_ds_lat = ds_lat
+                                    best_ds_rule_len = ds_rule_len
                     except KeyError:
                         pass
             except KeyError:
