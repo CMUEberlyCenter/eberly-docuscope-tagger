@@ -3,4 +3,4 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip; pip install -r /tmp/requirements.txt --upgrade
 WORKDIR /app
 COPY app /app
-ENTRYPOINT celery -A worker tasks.celery
+ENTRYPOINT celery -A tasks.celery worker
