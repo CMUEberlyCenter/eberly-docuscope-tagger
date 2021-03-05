@@ -74,6 +74,7 @@ def tag_entry(self, doc_id):
     # Do processing outside of session_scope as it is very long.
     if doc_content:
         try:
+            ds_dict = "default"
             doc_dict = create_tag_dict(MSWord.toTOML(doc_content), ds_dict)
             doc_processed = doc_dict
             doc_state = "tagged"
