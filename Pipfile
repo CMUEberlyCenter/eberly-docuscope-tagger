@@ -10,9 +10,6 @@ SQLAlchemy = "*"
 mysqlclient = "*"
 email-validator = "*"
 ujson = "*"
-celery = "*"
-fastapi = "*"
-python-memcached = "*"
 
 [dev-packages]
 pylint = "*"

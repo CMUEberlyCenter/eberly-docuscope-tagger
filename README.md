@@ -2,12 +2,17 @@
 
 DocuScope Tagger Service
 ========================
-A Docker'ed service for tagging text based on the DocuScope Ity tagger.
+A Singularity application for tagging text based on the DocuScope Ity tagger.
 
-This service requires CMU_Sidecar/docuscope-dictionary>
+## Requirements
+1. [Singularity](https://sylabs.io/guides/3.7/admin-guide/)
+1. A DocuScope dictionary in app/dictionaries/
 
 ## Usage
-See [API Document](docuscope-tag-api.yml) for what RESTful commands are available.
+1. `singularity build docuscope-tagger.sif docuscope-tagger.def`
+1. `./docuscope-tagger.sif --help` to list command line options.
+1. To run tagger: `./docuscope-tagger.sif -c --db {uri}`
+where {uri} is the uri of the database containing documents to be tagged. 
 
 ## Thanks
 This was developed as part of the Sidecar project which is supported by

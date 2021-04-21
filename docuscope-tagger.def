@@ -1,7 +1,3 @@
-#Bootstrap: localimage
-#From: docuscope-dictionary.sif
-#Stage: dictionary
-
 Bootstrap: docker
 From: python:3.9-buster
 Stage: tagger

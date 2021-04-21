@@ -12,16 +12,16 @@ stages:
 include:
   - template: SAST.gitlab-ci.yml
 
-variables:
-  DOCKER_DRIVER: overlay2
-  REF_CONTAINER: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
-  REF_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}:latest
-  CELERY_CONTAINER: ${CI_REGISTRY_IMAGE}/task:${CI_COMMIT_REF_SLUG}
-  CELERY_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}/task:latest
-  DOCKER_TLS_CERTDIR: "/certs"
+#variables:
+#  DOCKER_DRIVER: overlay2
+#  REF_CONTAINER: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}
+#  REF_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}:latest
+#  CELERY_CONTAINER: ${CI_REGISTRY_IMAGE}/task:${CI_COMMIT_REF_SLUG}
+#  CELERY_CONTAINER_RELEASE: ${CI_REGISTRY_IMAGE}/task:latest
+#  DOCKER_TLS_CERTDIR: "/certs"
 
-before_script:
-  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+#before_script:
+#  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
 
 
 pylint:
@@ -34,32 +34,32 @@ pylint:
     - pylint --extension-pkg-whitelist=pydantic --disable=R0801 app
   allow_failure: true
 
-build_web:
-  stage: build
-  script:
-    - docker build -t "${REF_CONTAINER}" .
-    - docker push "${REF_CONTAINER}"
+#build_web:
+#  stage: build
+#  script:
+#    - docker build -t "${REF_CONTAINER}" .
+#    - docker push "${REF_CONTAINER}"
 
-build_celery:
-  stage: build
-  script:
-    - docker build -t "${CELERY_CONTAINER}" -f Dockerfile-celery .
-    - docker push "${CELERY_CONTAINER}"
+#build_celery:
+#  stage: build
+#  script:
+#    - docker build -t "${CELERY_CONTAINER}" -f Dockerfile-celery .
+#    - docker push "${CELERY_CONTAINER}"
 
-release_web:
-  stage: release
-  script:
-    - docker pull "${REF_CONTAINER}"
-    - docker tag "${REF_CONTAINER}" "${REF_CONTAINER_RELEASE}"
-    - docker push "${REF_CONTAINER_RELEASE}"
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+#release_web:
+#  stage: release
+#  script:
+#    - docker pull "${REF_CONTAINER}"
+#    - docker tag "${REF_CONTAINER}" "${REF_CONTAINER_RELEASE}"
+#    - docker push "${REF_CONTAINER_RELEASE}"
+#  rules:
+#    - if: '$CI_COMMIT_REF_NAME == "master"'
 
-release_celery:
-  stage: release
-  script:
-    - docker pull "${CELERY_CONTAINER}"
-    - docker tag "${CELERY_CONTAINER}" "${CELERY_CONTAINER_RELEASE}"
-    - docker push "${CELERY_CONTAINER_RELEASE}"
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+#release_celery:
+#  stage: release
+#  script:
+#    - docker pull "${CELERY_CONTAINER}"
+#    - docker tag "${CELERY_CONTAINER}" "${CELERY_CONTAINER_RELEASE}"
+#    - docker push "${CELERY_CONTAINER_RELEASE}"
+#  rules:
+#    - if: '$CI_COMMIT_REF_NAME == "master"'
