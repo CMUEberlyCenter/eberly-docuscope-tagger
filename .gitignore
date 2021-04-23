@@ -111,3 +111,6 @@ dmypy.json
 
 # editor files
 *~
+
+# proprietary dictionaries
+/app/dictionaries/
