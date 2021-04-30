@@ -114,3 +114,6 @@ dmypy.json
 
 # proprietary dictionaries
 /app/dictionaries/
+
+# Any signing files.
+*.pem
