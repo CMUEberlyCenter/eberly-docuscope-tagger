@@ -22,7 +22,6 @@ for container help:
 
 %post
         pip install --upgrade pip
-        #pip install --no-cache-dir --upgrade mysqlclient python-docx sqlalchemy jinja2
 	pip install --no-cache-dir --upgrade -r /requirements.txt
 
 %runscript
