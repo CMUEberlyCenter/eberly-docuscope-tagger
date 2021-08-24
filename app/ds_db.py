@@ -14,6 +14,8 @@ class UUID(TypeDecorator):
     #pylint: disable=W0223
     impl = VARBINARY(16)
 
+    cache_ok = True
+
     def process_bind_param(self, value, dialect):
         """When binding the parameter, convert to bytes."""
         if value is None:
