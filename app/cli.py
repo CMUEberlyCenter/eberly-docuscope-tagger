@@ -68,12 +68,9 @@ def tag_entry(tagger, doc_id):
     ENGINE.dispose()
     logging.info("Trying to tag %s", doc_id)
     with session_scope() as session:
-        qry = session.query(ds_db.Filesystem.content,
-                            ds_db.DSDictionary.name)\
-                     .filter(ds_db.Filesystem.id == doc_id)\
-                     .filter(ds_db.Assignment.id == ds_db.Filesystem.assignment)\
-                     .filter(ds_db.DSDictionary.id == ds_db.Assignment.dictionary)
-        doc_content, ds_dict = qry.first()
+        # Removed retrieval of dictionary name.  Unused and NULL values crash #7
+        (doc_content,) = session.query(ds_db.Filesystem.content)\
+                     .filter(ds_db.Filesystem.id == doc_id).first()
         if doc_content:
             session.query(ds_db.Filesystem)\
                .filter(ds_db.Filesystem.id == doc_id)\
@@ -85,7 +82,6 @@ def tag_entry(tagger, doc_id):
     if doc_content:
         try:
             doc_processed = tag_dict(tagger.tag_string(MSWord.toTOML(doc_content)))
-            #doc_processed = create_tag_dict(MSWord.toTOML(doc_content), ds_dict)
             doc_state = "tagged"
             logging.info("Successfully tagged %s", doc_id)
         except Exception as exc: #pylint: disable=W0703
