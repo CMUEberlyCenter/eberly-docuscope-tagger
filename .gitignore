@@ -117,3 +117,7 @@ dmypy.json
 
 # Any signing files.
 *.pem
+
+# singularity image
+*.sif
+
