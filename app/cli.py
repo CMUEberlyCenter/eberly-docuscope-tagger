@@ -90,6 +90,9 @@ def tag_entry(tagger, doc_id):
             doc_processed = {'error': "{0}".format(exc),
                              'trace': traceback.format_exc()}
             doc_state = "error"
+        if doc_processed['ds_num_word_tokens'] == 0:
+            doc_state = "error"
+            doc_processed['error'] = 'Document failed to parse.'
     with session_scope() as session:
         session.query(ds_db.Filesystem)\
                .filter_by(id=doc_id)\
