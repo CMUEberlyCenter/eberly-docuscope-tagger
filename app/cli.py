@@ -3,8 +3,10 @@ Run with --help to see options.
 """
 import argparse
 from contextlib import contextmanager
+from datetime import timedelta
 import logging
 from multiprocessing import Pool
+import time
 import traceback
 import uuid
 
@@ -145,8 +147,10 @@ def run_tagger(args):
         logging.info('Loading dictionary: %s', Config.DICTIONARY)
         # Needs to be global to share as functools.partial does not work.
         global TAGGER #pylint: disable=global-statement
+        start = time.time()
         TAGGER = create_ds_tagger(Config.DICTIONARY)
-        logging.info('Loaded dictionary: %s', Config.DICTIONARY)
+        logging.info('Loaded dictionary: %s (in %s)', Config.DICTIONARY,
+                     timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
         with Pool() as pool:
             pool.map(tag, valid_ids)
