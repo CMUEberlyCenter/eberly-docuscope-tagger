@@ -8,7 +8,7 @@ for container help:
 
 %labels
         Maintainer Michael Ringenberg <ringenberg@cmu.edu>
-        Version v3.1.4
+        Version v3.1.5
 
 %setup
         mkdir -p $SINGULARITY_ROOTFS/app

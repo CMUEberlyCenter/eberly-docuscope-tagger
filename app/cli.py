@@ -62,7 +62,7 @@ def tag_entry(tagger, doc_id):
     doc_id: a uuid of the document in the database.
     """
     doc_content = None
-    ds_dict = "default"
+    # ds_dict = "default"
     doc_processed = {"ERROR": "No file data to process."}
     doc_state = "error"
     ENGINE.dispose()
@@ -82,17 +82,19 @@ def tag_entry(tagger, doc_id):
     if doc_content:
         try:
             doc_processed = tag_dict(tagger.tag_string(MSWord.toTOML(doc_content)))
-            doc_state = "tagged"
-            logging.info("Successfully tagged %s", doc_id)
+            if doc_processed.get('ds_num_word_tokens', 0) == 0:
+                doc_state = "error"
+                doc_processed['error'] = 'Document failed to parse: no word tokens found.'
+                logging.error("Invalid parsing results %s", doc_id)
+            else:
+                doc_state = "tagged"
+                logging.info("Successfully tagged %s", doc_id)
         except Exception as exc: #pylint: disable=W0703
             logging.error("Unsuccessfully tagged %s", doc_id)
             traceback.print_exc()
             doc_processed = {'error': "{0}".format(exc),
                              'trace': traceback.format_exc()}
             doc_state = "error"
-        if doc_processed['ds_num_word_tokens'] == 0:
-            doc_state = "error"
-            doc_processed['error'] = 'Document failed to parse.'
     with session_scope() as session:
         session.query(ds_db.Filesystem)\
                .filter_by(id=doc_id)\
@@ -111,8 +113,9 @@ def valid_uuid(doc_id):
 
 TAGGER = None
 
-def tag(id):
-    return tag_entry(TAGGER, id)
+def tag(doc_id):
+    """ Wrapper function for tag_entry that includes the tagger. """
+    return tag_entry(TAGGER, doc_id)
 
 def run_tagger(args):
     """Gathers the document ids and runs the tagger on them (multitreaded)"""
