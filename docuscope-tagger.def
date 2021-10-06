@@ -16,7 +16,7 @@ Stage: deps
 
 
 Bootstrap: docker
-From: python:3.10
+From: python:3.10-alpine
 Stage: tagger
 
 %help
@@ -40,7 +40,8 @@ for container help:
 %files from deps
        .venv /
 
-#%post
+%post
+        apk --update add mariadb-connector-c
 #       pip install --upgrade pip
 #	pip install --no-cache-dir --upgrade -r /requirements.txt
 
