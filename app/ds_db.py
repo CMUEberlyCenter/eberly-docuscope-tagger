@@ -16,7 +16,8 @@ class UUID(TypeDecorator):
 
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    #pylint: disable=no-self-use
+    def process_bind_param(self, value, _dialect):
         """When binding the parameter, convert to bytes."""
         if value is None:
             return value
@@ -27,7 +28,8 @@ class UUID(TypeDecorator):
                 return uuid.UUID(bytes=value).bytes
             return uuid.UUID(value).bytes
         return value.bytes
-    def process_result_value(self, value, dialect):
+    #pylint: disable=no-self-use
+    def process_result_value(self, value, _dialect):
         """When processing results, convert to UUID."""
         if value is None:
             return value

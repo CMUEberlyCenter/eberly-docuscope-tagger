@@ -1,3 +1,4 @@
+""" Core class for Ity classes. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
@@ -76,5 +77,4 @@ class BaseClass(ABC):
         """
         if self._label is not None:
             return str(self._label)
-        else:
-            return self.__class__.__name__
+        return self.__class__.__name__

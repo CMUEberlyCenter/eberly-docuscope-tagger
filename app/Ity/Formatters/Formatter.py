@@ -75,4 +75,5 @@ class Formatter(BaseClass):
             tags=None,
             tokens=None,
             text_str=None):
+        """ Compose output. """
         return

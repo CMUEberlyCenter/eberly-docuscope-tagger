@@ -1,18 +1,18 @@
+""" An Ity formatter for generating simple HTML. """
 # coding=utf-8
 
 import os
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ...Tokenizers.Tokenizer import Tokenizer
 from ..Formatter import Formatter
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 def pithify(rule_name):
-    if type(rule_name) == str:
+    if isinstance(rule_name, str):
         return rule_name.split(".")[-1]
-    else:
-        return rule_name
+    return rule_name
 
 class SimpleHTMLFormatter(Formatter):
-
+    """ Format tagged document as simple HTML. """
     def __init__(
             self,
             debug=None,
@@ -22,7 +22,7 @@ class SimpleHTMLFormatter(Formatter):
             tag_maps_per_page=2000,
     ):
 
-        super(SimpleHTMLFormatter, self).__init__(debug)
+        super().__init__(debug)
         self.template_root = template_root
         if self.template_root is None:
             self.template_root = os.path.join(
@@ -47,19 +47,21 @@ class SimpleHTMLFormatter(Formatter):
         self.token_str_to_output_index = -1
         self.token_whitespace_newline_str_to_output_index = 0
 
-    def format(self, tags=None, tokens=None, s=None):
-        if (tags is None or tokens is None or s is None):
+    def format(self, output_path=None, rules=None,
+               tags=None, tokens=None, text_str=None):
+        if (tags is None or tokens is None or text_str is None):
             raise ValueError("Not enough valid input data given to format() method.")
 
         output = self.template.render(
             tags=tags,
             tokens=tokens,
-            s=s,
+            s=text_str,
             token_strs_index=self.token_strs_index,
             token_type_index=Tokenizer.INDEXES["TYPE"],
             token_types=Tokenizer.TYPES,
             token_str_to_output_index=self.token_str_to_output_index,
-            token_whitespace_newline_str_to_output_index=self.token_whitespace_newline_str_to_output_index,
+            token_whitespace_newline_str_to_output_index =
+            self.token_whitespace_newline_str_to_output_index,
             portable=self.portable
         )
         return output

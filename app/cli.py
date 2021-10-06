@@ -37,7 +37,7 @@ logging.basicConfig(level=LEVELS[min(len(LEVELS)-1, ARGS.verbose)])
 ENGINE = None
 if ARGS.db:
     logging.info('Database settings from args')
-    ENGINE = create_engine("mysql+mysqldb://{}".format(ARGS.db))
+    ENGINE = create_engine(f"mysql+mysqldb://{ARGS.db}")
 else:
     logging.info('Database settings env')
     ENGINE = create_engine(Config.SQLALCHEMY_DATABASE_URI)
@@ -92,7 +92,7 @@ def tag_entry(tagger, doc_id):
         except Exception as exc: #pylint: disable=W0703
             logging.error("Unsuccessfully tagged %s", doc_id)
             traceback.print_exc()
-            doc_processed = {'error': "{0}".format(exc),
+            doc_processed = {'error': f"{exc}",
                              'trace': traceback.format_exc()}
             doc_state = "error"
     with session_scope() as session:
@@ -142,10 +142,11 @@ def run_tagger(args):
                                   .filter_by(state='pending')])
     if valid_ids:
         # Create the tagger using default dictionary.
-        logging.info(f'Loading dictionary: {Config.DICTIONARY}')
-        global TAGGER
+        logging.info('Loading dictionary: %s', Config.DICTIONARY)
+        # Needs to be global to share as functools.partial does not work.
+        global TAGGER #pylint: disable=global-statement
         TAGGER = create_ds_tagger(Config.DICTIONARY)
-        logging.info(f'Loaded dictionary: {Config.DICTIONARY}')
+        logging.info('Loaded dictionary: %s', Config.DICTIONARY)
         logging.info('Tagging: %s', valid_ids)
         with Pool() as pool:
             pool.map(tag, valid_ids)

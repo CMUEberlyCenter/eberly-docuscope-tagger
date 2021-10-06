@@ -1,3 +1,4 @@
+""" Base Ity tokenizer class. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
@@ -187,15 +188,14 @@ class Tokenizer(BaseClass):
         for token_type in excluded_token_types:
             if token_type not in cls.TYPES.values():
                 raise ValueError("Attempting to exclude an invalid token type (%u)." % token_type)
-            else:
-                num_valid_excluded_token_types += 1
+            num_valid_excluded_token_types += 1
         # Are we going to ignore *every* token type or something?
         # That's, uh, not very useful.
         if num_valid_excluded_token_types >= len(cls.TYPES.keys()):
             raise ValueError("Attempting to exclude all (or more) possible token types.")
 
     @abc.abstractmethod
-    def tokenize(self, s):
+    def tokenize(self, text):
         """
         An abstract method where all the tokenizing happens. Returns a list of
         "token lists", which represents all the tokens captured from the input
@@ -229,8 +229,8 @@ class Tokenizer(BaseClass):
         they should set the default of their constructor's excluded_token_types
         argument appropriately.
 
-        :param s: The text to tokenize.
-        :type s: str
+        :param text: The text to tokenize.
+        :type text: str
         :return A list of "token lists".
         :rtype list
         """

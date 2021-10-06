@@ -1,3 +1,4 @@
+""" Base Ity tagger class. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
@@ -191,9 +192,9 @@ class Tagger(BaseClass):
         designed to return all "meta" rules and associated tags by default.
 
         Make sure you call this in Tagger subclasses' __init__() methods using
-        Python 2.7.x's super() function::
+        Python's super() function::
 
-            super(CustomTagger, self).__init__(
+            super().__init__(
                 debug=debug,
                 label=label,
                 excluded_token_types=excluded_token_types,
@@ -240,7 +241,7 @@ class Tagger(BaseClass):
         :return: A Tagger instance.
         :rtype Ity.Taggers.Tagger
         """
-        super(Tagger, self).__init__(debug, label)
+        super().__init__(debug, label)
         # Make sure all the excluded token types are of a type that the Ity
         # Tokenizer base class "knows" about. This method raises ValueErrors
         # if it encounters an invalid token type.
@@ -359,14 +360,14 @@ class Tagger(BaseClass):
         return (
             rule is not None and
             "name" in rule and
-            type(rule["name"]) is str and
+            isinstance(rule["name"], str) and
             "full_name" in rule and
-            type(rule["full_name"]) is str and
+            isinstance(rule["full_name"], str) and
             rule["full_name"].startswith(self.full_label) and
             "num_tags" in rule and
-            type(rule["num_tags"]) is int and
+            isinstance(rule["num_tags"], int) and
             rule["num_tags"] >= 0 and
-            type(rule["num_included_tokens"]) is int and
+            isinstance(rule["num_included_tokens"], int) and
             rule["num_included_tokens"] >= 0
         )
 
@@ -399,7 +400,7 @@ class Tagger(BaseClass):
             tag["token_end_len"] > 0
         )
 
-    def _get_nth_next_included_token_index(self, starting_token_index=None, n=1):
+    def _get_nth_next_included_token_index(self, starting_token_index=None, offset=1):
         """
         A helper method to get the index of the next token that is not an
         excluded token type, given a starting token index (or self.token_index).
@@ -408,8 +409,8 @@ class Tagger(BaseClass):
                                      if None, we'll use self.token_index.
         :type starting_token_index: non-negative int that's less than
                                     len(self.tokens) or None
-        :param n: The nth token from the starting token index.
-        :type n: int > 0
+        :param offset: The nth token from the starting token index.
+        :type offset: int > 0
         :return: The index of the nth next included token. None if we can't
                  the appropriate index for whatever reason.
         :rtype: non-negative int that's less than len(self.tokens) or None
@@ -417,19 +418,18 @@ class Tagger(BaseClass):
         if starting_token_index is None:
             starting_token_index = self.token_index
         next_token_index = starting_token_index
-        while n > 0:
+        while offset > 0:
             next_token_index += 1
             # Don't go beyond the bounds of the tokens list!
             if next_token_index >= len(self.tokens):
                 break
             next_token = self.tokens[next_token_index]
             if next_token[Tokenizer.INDEXES["TYPE"]] not in self.excluded_token_types:
-                n -= 1
+                offset -= 1
         # Did we actually get the nth next token index?
-        if n > 0:
+        if offset > 0:
             return None
-        else:
-            return next_token_index
+        return next_token_index
 
     @abc.abstractmethod
     def tag(self, tokens):

@@ -31,7 +31,16 @@ def create_ds_tagger(dictionary):
     if not ds_dict:
         logging.error("Invalid dictionary: %s", dictionary)
         raise FileNotFoundError
-    #TODO: check if valid dictionary
+    # Basic shape checks.
+    if 'rules' not in ds_dict:
+        logging.error("Invalid dictionary format, no rules: %s", dictionary)
+        raise KeyError
+    if 'shortRules' not in ds_dict:
+        logging.error("Invalid dictionary format, no shortRules: %s", dictionary)
+        raise KeyError
+    if 'words' not in ds_dict:
+        logging.error("Invalid dictionary format, no words: %s", dictionary)
+        raise KeyError
     return ItyTagger(dictionary, ds_dict)
 
 def countdict(target_list):
@@ -69,14 +78,14 @@ def tag_dict(result):
         'ds_num_word_tokens': result['num_word_tokens'],
         'ds_num_excluded_tokens': result['num_excluded_tokens'],
         'ds_num_punctuation_tokens': result['num_punctuation_tokens'],
-        'ds_dictionary': Config.DICTIONARY # FIXME: this should be from the tagger used
+        'ds_dictionary': Config.DICTIONARY # Hardcoded as only default is used.
     }
-    tag_dict = {}
+    tags_dict = {}
     for _, ds_value in result['tag_dict'].items():
         key = ds_value['name']
         ds_value.pop('name', None)
-        tag_dict[key] = ds_value
-    doc_dict['ds_tag_dict'] = tag_dict
+        tags_dict[key] = ds_value
+    doc_dict['ds_tag_dict'] = tags_dict
     cdict = countdict(result['tag_chain'])
     doc_dict['ds_count_dict'] = {str(key): value for key, value in cdict.items()}
     return doc_dict

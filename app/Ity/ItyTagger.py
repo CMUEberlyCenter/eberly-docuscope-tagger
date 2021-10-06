@@ -1,3 +1,4 @@
+""" Base Ity tagger class with the main method of tag_string. """
 import logging
 
 #import .tagger_support as ts
@@ -5,6 +6,7 @@ from .Tokenizers.RegexTokenizer import RegexTokenizer
 from .Formatters.SimpleHTMLFormatter import SimpleHTMLFormatter
 from .Taggers.DocuscopeTagger import DocuscopeTagger
 
+#pylint: disable=too-few-public-methods
 class ItyTagger():
     """A tagger with default settings."""
     def __init__(self, dictionary_path=None, dictionary=None):
@@ -22,7 +24,8 @@ class ItyTagger():
         """Tags a string."""
         tokens = self.tokenizer.tokenize(string)
 
-        tag_dict, tag_map = self.tagger.tag(tokens)    # see DocuscopeTagger.__init__.py (returns 'rules', 'tags')
+        # see DocuscopeTagger.__init__.py (returns 'rules', 'tags')
+        tag_dict, tag_map = self.tagger.tag(tokens)
 
         # self.logger.info("ItyTagger.__init__(): tag_dict = {}".format(tag_dict))
         # self.logger.info("ItyTagger.__init__(): tag_map  = {}".format(tag_map))
@@ -52,6 +55,6 @@ class ItyTagger():
         output_dict['format_output'] = self.formatter.format(
             tags=(output_dict["tag_dict"], tag_map),
             tokens=tokens,
-            s=output_dict["text_contents"])
+            text_str=output_dict["text_contents"])
 
         return output_dict

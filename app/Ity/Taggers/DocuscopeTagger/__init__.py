@@ -60,7 +60,7 @@ class DocuscopeTagger(Tagger):
             dictionary=None,
             dictionary_path="default"
     ):
-        super(DocuscopeTagger, self).__init__(
+        super().__init__(
             debug=debug,
             label=label,
             excluded_token_types=excluded_token_types,
@@ -149,7 +149,8 @@ class DocuscopeTagger(Tagger):
                                 ds_rule = [token_ds_word, next_token_ds_word, *ds_partial_rule]
                                 # check to see if the rule applies
                                 ds_rule_len = len(ds_rule)
-                                if ds_rule_len > best_ds_rule_len and self._long_rule_applies_at_token_index(ds_rule):
+                                if (ds_rule_len > best_ds_rule_len and
+                                    self._long_rule_applies_at_token_index(ds_rule)):
                                     # keep the "best" rule
                                     best_ds_rule = ds_rule
                                     best_ds_lat = ds_lat
@@ -163,7 +164,7 @@ class DocuscopeTagger(Tagger):
             rule["name"] = best_ds_lat
             rule["full_name"] = ".".join([self.full_label, rule["name"]])
             # Update the tag structure.
-            last_token_index = self._get_nth_next_included_token_index(n=best_ds_rule_len - 1)
+            last_token_index = self._get_nth_next_included_token_index(offset=best_ds_rule_len - 1)
             tag.update(
                 rules=[
                     (rule["full_name"], best_ds_rule)
@@ -189,8 +190,10 @@ class DocuscopeTagger(Tagger):
             # next_token_index in the loop references the 3rd token in the rule.
             next_token_index = self._get_nth_next_included_token_index()
             for i in range(2, len(rule)):
-                next_token_index = self._get_nth_next_included_token_index(starting_token_index=next_token_index)
-                if next_token_index is None or rule[i] not in self._get_ds_words_for_token_index(next_token_index):
+                next_token_index = self._get_nth_next_included_token_index(
+                    starting_token_index=next_token_index)
+                if (next_token_index is None or
+                    rule[i] not in self._get_ds_words_for_token_index(next_token_index)):
                     return False
             # Made it out of the loop? Then the rule applies!
             return next_token_index
@@ -243,7 +246,7 @@ class DocuscopeTagger(Tagger):
         # For all cases, we should have a rule "name" by now.
         # Update the rule's full_name value and append a rule tuple to the
         # tag's "rules" list.
-        if "name" in rule and type(rule["name"]) is str:
+        if "name" in rule and isinstance(rule["name"], str):
             rule["full_name"] = ".".join([self.full_label, rule["name"]])
             rule_tuple = (rule["full_name"], matching_ds_word)
             tag["rules"].append(rule_tuple)
@@ -253,7 +256,8 @@ class DocuscopeTagger(Tagger):
     def _get_tag(self):
         # Try finding a long rule.
         rule, tag = self._get_long_rule_tag()
-        # If the long rule and tag are invalid (i.e. we got None and None), try finding a short rule.
+        # If the long rule and tag are invalid (i.e. we got None and None),
+        # try finding a short rule.
         if not self._is_valid_rule(rule) and not self._is_valid_tag(tag):
             # Try finding a short rule (which could be the "untagged",
             # "no rule", or "excluded" rules). This method *should* never
@@ -302,9 +306,12 @@ class DocuscopeTagger(Tagger):
         self.tokens = tokens
         self.token_index = 0
         # Loop through the tokens and tag them.
-        while self.token_index < len(self.tokens) and self.token_index is not None:
+        while (self.token_index < len(self.tokens) and
+               self.token_index is not None):
             if self.debug:
-                print("\nPassing self.tokens[{}] = {}".format(self.token_index, str(self.tokens[self.token_index])))
+                dindex = self.token_index
+                dtokens = str(self.tokens[dindex])
+                print(f"\nPassing self.tokens[{dindex}] = {dtokens}")
             self._get_tag()
         # All done, so let's do some cleanup.
         rules = self.rules
