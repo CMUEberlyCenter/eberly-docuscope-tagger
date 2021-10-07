@@ -1,3 +1,4 @@
+""" Base class for Ity formatters which output the tagged text. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 

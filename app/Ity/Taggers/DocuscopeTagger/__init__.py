@@ -1,3 +1,4 @@
+""" The DocuScope Tagger """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
@@ -265,11 +266,10 @@ class DocuscopeTagger(Tagger):
             rule, tag = self._get_short_rule_tag()
         # We should absolutely have a valid rule and tag at this point.
         if not self._is_valid_rule(rule) or not self._is_valid_tag(tag):
-            raise ValueError("Unexpected None, None return value/s from\
-            self._get_short_rule_tag(). Can't tag token '%s' at index %u." % (
-                self.tokens[self.token_index],
-                self.token_index
-            ))
+            raise ValueError(f"Unexpected None, None return value/s from "
+                             f"self._get_short_rule_tag(). Can't tag token "
+                             f"'{self.tokens[self.token_index]}' "
+                             f"at index {self.token_index}.")
         # Add the rule to self.rules (if we're supposed to) and add the tag to
         # self.tags.
         if self._should_return_rule(rule):
@@ -289,7 +289,7 @@ class DocuscopeTagger(Tagger):
                 tag_token_strs = []
                 for token in self.tokens[tag["index_start"]:(tag["index_end"] + 1)]:
                     tag_token_strs.append(token[Tokenizer.INDEXES["STRS"]][-1])
-                print(">>> BEST RULE: {} for \"{}\"".format(rule["name"], str(tag_token_strs)))
+                logging.debug(">>> BEST RULE: %s for \"%s\"", rule["name"], str(tag_token_strs))
 
         # Compute the new token index.
         # If "overlapping tags" are allowed, start at the token following

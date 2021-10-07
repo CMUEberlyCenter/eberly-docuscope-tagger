@@ -1,3 +1,4 @@
+""" Ity formatter module. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 

@@ -187,7 +187,8 @@ class Tokenizer(BaseClass):
         # Make sure the excluded token types are all valid types.
         for token_type in excluded_token_types:
             if token_type not in cls.TYPES.values():
-                raise ValueError("Attempting to exclude an invalid token type (%u)." % token_type)
+                raise ValueError(f"Attempting to exclude an invalid token type "
+                                 f"({token_type}).")
             num_valid_excluded_token_types += 1
         # Are we going to ignore *every* token type or something?
         # That's, uh, not very useful.

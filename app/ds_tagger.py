@@ -21,7 +21,7 @@ def get_dictionary(dictionary):
             data = json.loads(dic_in.read())
     else:
         logging.error("Could not find dictionary: %s", ds_dict)
-        raise FileNotFoundError("Could not find dictionary: %s" % ds_dict)
+        raise FileNotFoundError(f"Could not find dictionary: {ds_dict}")
     return data
 
 def create_ds_tagger(dictionary):

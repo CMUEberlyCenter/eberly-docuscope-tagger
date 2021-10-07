@@ -7,6 +7,7 @@ from ...Tokenizers.Tokenizer import Tokenizer
 from ..Formatter import Formatter
 
 def pithify(rule_name):
+    """ If rule name is a string, get the last part after the last '.' """
     if isinstance(rule_name, str):
         return rule_name.split(".")[-1]
     return rule_name
