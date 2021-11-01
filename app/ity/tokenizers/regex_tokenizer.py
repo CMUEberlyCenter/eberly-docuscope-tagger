@@ -4,7 +4,7 @@ __author__ = 'kohlmannj'
 
 import re
 from html import unescape
-from .Tokenizer import Tokenizer
+from .tokenizer import Tokenizer
 
 
 class RegexTokenizer(Tokenizer):
@@ -184,7 +184,6 @@ class RegexTokenizer(Tokenizer):
     """
 
     def __init__(self,
-                 debug=False,
                  label=None,
                  excluded_token_types=(),
                  case_sensitive=True,
@@ -252,7 +251,6 @@ class RegexTokenizer(Tokenizer):
                                (default None)
         """
         super().__init__(
-            debug=debug,
             label=label,
             excluded_token_types=excluded_token_types,
             case_sensitive=case_sensitive,

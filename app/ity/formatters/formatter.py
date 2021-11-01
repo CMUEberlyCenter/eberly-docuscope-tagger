@@ -3,7 +3,7 @@
 __author__ = 'kohlmannj'
 
 import abc
-from ..BaseClass import BaseClass
+from ..base import BaseClass
 
 
 class Formatter(BaseClass):
@@ -53,14 +53,12 @@ class Formatter(BaseClass):
     """
     def __init__(
             self,
-            debug=False,
             label=None,
             token_str_index=-1,
             token_whitespace_newline_str_index=0,
             standalone=True,
             paginated=False):
         super().__init__(
-            debug=debug,
             label=label
         )
         self.token_str_index = token_str_index

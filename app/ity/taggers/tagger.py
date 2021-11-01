@@ -3,8 +3,8 @@
 __author__ = 'kohlmannj'
 
 import abc
-from ..BaseClass import BaseClass
-from ..Tokenizers.Tokenizer import Tokenizer
+from ..base import BaseClass
+from ..tokenizers.tokenizer import Tokenizer
 
 
 class Tagger(BaseClass):
@@ -175,7 +175,6 @@ class Tagger(BaseClass):
 
     def __init__(
             self,
-            debug=False,
             label=None,
             excluded_token_types=(),
             case_sensitive=True,
@@ -195,7 +194,6 @@ class Tagger(BaseClass):
         Python's super() function::
 
             super().__init__(
-                debug=debug,
                 label=label,
                 excluded_token_types=excluded_token_types,
                 case_sensitive=case_sensitive,
@@ -208,8 +206,6 @@ class Tagger(BaseClass):
                 return_included_tags=return_included_tags
             )
 
-        :param debug: Whether or not to print debugging information.
-        :type debug: bool
         :param label: The label string identifying this module's return values.
         :type label: str
         :param excluded_token_types: Which token types, from
@@ -241,7 +237,7 @@ class Tagger(BaseClass):
         :return: A Tagger instance.
         :rtype Ity.Taggers.Tagger
         """
-        super().__init__(debug, label)
+        super().__init__(label)
         # Make sure all the excluded token types are of a type that the Ity
         # Tokenizer base class "knows" about. This method raises ValueErrors
         # if it encounters an invalid token type.

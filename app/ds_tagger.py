@@ -8,7 +8,7 @@ import re
 import gzip
 import logging
 from pathlib import Path
-from ity.ItyTagger import ItyTagger
+from ity.tagger import ItyTagger
 
 from default_settings import Config
 
@@ -20,7 +20,7 @@ def get_dictionary(dictionary):
         with gzip.open(ds_dict, 'rt') as dic_in:
             data = json.loads(dic_in.read())
     elif ds_dict.with_suffix('').is_file(): # try uncompressed dictionary
-        with open(ds_dict.with_suffix(''), 'rt') as dic_in:
+        with open(ds_dict.with_suffix(''), 'rt', encoding="UTF-8") as dic_in:
             data = json.loads(dic_in.read())
     else: # fail on not finding dictionary
         logging.error("Could not find dictionary: %s", ds_dict)

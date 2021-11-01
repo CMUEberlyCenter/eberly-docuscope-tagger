@@ -3,8 +3,8 @@
 
 import os
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from ...Tokenizers.Tokenizer import Tokenizer
-from ..Formatter import Formatter
+from ..tokenizers.tokenizer import Tokenizer
+from .formatter import Formatter
 
 def pithify(rule_name):
     """ If rule name is a string, get the last part after the last '.' """
@@ -16,14 +16,13 @@ class SimpleHTMLFormatter(Formatter):
     """ Format tagged document as simple HTML. """
     def __init__(
             self,
-            debug=None,
             template="base.html",
             template_root=None,
             portable=False,
             tag_maps_per_page=2000,
     ):
 
-        super().__init__(debug)
+        super().__init__()
         self.template_root = template_root
         if self.template_root is None:
             self.template_root = os.path.join(

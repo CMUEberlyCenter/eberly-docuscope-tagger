@@ -3,7 +3,7 @@
 __author__ = 'kohlmannj'
 
 import abc
-from ..BaseClass import BaseClass
+from ..base import BaseClass
 
 
 class Tokenizer(BaseClass):
@@ -119,7 +119,6 @@ class Tokenizer(BaseClass):
 
     def __init__(
             self,
-            debug=False,
             label=None,
             excluded_token_types=(),
             case_sensitive=True,
@@ -130,15 +129,12 @@ class Tokenizer(BaseClass):
         subclasses' __init__() methods using Python 2.7.x's super() function::
 
             super(CustomTokenizer, self).__init__(
-                debug=debug,
                 label=label,
                 excluded_token_types=excluded_token_types,
                 case_sensitive=case_sensitive,
                 preserve_original_strs=preserve_original_strs
             )
 
-        :param debug: Whether or not to print debugging information.
-        :type debug: bool
         :param label: The label string identifying this module's return values.
         :type label: str
         :param excluded_token_types: Which token types, from
@@ -159,7 +155,7 @@ class Tokenizer(BaseClass):
         :return: A Tokenizer instance.
         :rtype: Ity.Tokenizers.Tokenizer
         """
-        super().__init__(debug=debug, label=label)
+        super().__init__(label=label)
         self.validate_excluded_token_types(excluded_token_types)
         self.excluded_token_types = excluded_token_types
         self.case_sensitive = case_sensitive

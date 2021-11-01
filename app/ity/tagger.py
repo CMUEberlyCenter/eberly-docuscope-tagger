@@ -2,9 +2,9 @@
 import logging
 
 #import .tagger_support as ts
-from .Tokenizers.RegexTokenizer import RegexTokenizer
-from .Formatters.SimpleHTMLFormatter import SimpleHTMLFormatter
-from .Taggers.DocuscopeTagger import DocuscopeTagger
+from .tokenizers.regex_tokenizer import RegexTokenizer
+from .formatters.simple_html_formatter import SimpleHTMLFormatter
+from .taggers.docuscope_tagger import DocuscopeTagger
 
 #pylint: disable=too-few-public-methods
 class ItyTagger():

@@ -3,7 +3,7 @@ import io
 import re
 from docx import Document
 
-def toTOML(doc_string):
+def docx_to_text(doc_string):
     """Converts a docx string to TOML text.
 
     Arguments:

@@ -6,8 +6,8 @@ from copy import copy, deepcopy
 import logging
 #import os
 
-from ...Tokenizers.Tokenizer import Tokenizer
-from ..Tagger import Tagger
+from ..tokenizers.tokenizer import Tokenizer
+from .tagger import Tagger
 
 class DocuscopeTagger(Tagger):
     """
@@ -44,7 +44,6 @@ class DocuscopeTagger(Tagger):
 
     def __init__(
             self,
-            debug=False,
             label="",
             excluded_token_types=(
                 Tokenizer.TYPES["WHITESPACE"],
@@ -62,7 +61,6 @@ class DocuscopeTagger(Tagger):
             dictionary_path="default"
     ):
         super().__init__(
-            debug=debug,
             label=label,
             excluded_token_types=excluded_token_types,
             untagged_rule_name=untagged_rule_name,
@@ -285,7 +283,7 @@ class DocuscopeTagger(Tagger):
             # Append the tag to self.tags.
             self.tags.append(tag)
             # Debug: print the tokens that have been tagged.
-            if self.debug:
+            if logging.getLogger(__name__).isEnabledFor(logging.DEBUG):
                 tag_token_strs = []
                 for token in self.tokens[tag["index_start"]:(tag["index_end"] + 1)]:
                     tag_token_strs.append(token[Tokenizer.INDEXES["STRS"]][-1])
@@ -308,10 +306,8 @@ class DocuscopeTagger(Tagger):
         # Loop through the tokens and tag them.
         while (self.token_index < len(self.tokens) and
                self.token_index is not None):
-            if self.debug:
-                dindex = self.token_index
-                dtokens = str(self.tokens[dindex])
-                print(f"\nPassing self.tokens[{dindex}] = {dtokens}")
+            logging.debug("\nPassing self.tokens[%d] = %s",
+                          self.token_index, self.tokens[self.token_index])
             self._get_tag()
         # All done, so let's do some cleanup.
         rules = self.rules

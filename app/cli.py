@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from default_settings import Config
 from ds_tagger import create_ds_tagger, tag_dict
 import ds_db
-import MSWord
+from docx_to_text import docx_to_text
 
 PARSER = argparse.ArgumentParser(
     prog="docuscope-tagger.sif",
@@ -83,7 +83,7 @@ def tag_entry(tagger, doc_id):
             raise FileNotFoundError(doc_id)
     if doc_content:
         try:
-            doc_processed = tag_dict(tagger.tag_string(MSWord.toTOML(doc_content)))
+            doc_processed = tag_dict(tagger.tag_string(docx_to_text(doc_content)))
             if doc_processed.get('ds_num_word_tokens', 0) == 0:
                 doc_state = "error"
                 doc_processed['error'] = 'Document failed to parse: no word tokens found.'

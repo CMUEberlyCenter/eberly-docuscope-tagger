@@ -35,8 +35,7 @@ class BaseClass(ABC):
     """
     #__metaclass__ = abc.ABCMeta
 
-    def __init__(self, debug=False, label=None):
-        self.debug = debug
+    def __init__(self, label=None):
         self._label = label
         self._full_label = ""
 
