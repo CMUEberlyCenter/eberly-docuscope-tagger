@@ -8,7 +8,7 @@ import re
 import gzip
 import logging
 from pathlib import Path
-from Ity.ItyTagger import ItyTagger
+from ity.ItyTagger import ItyTagger
 
 from default_settings import Config
 
@@ -16,10 +16,13 @@ def get_dictionary(dictionary):
     """Retrieve the given dictionary."""
     dictionary = dictionary or Config.DICTIONARY
     ds_dict = Path(Config.DICTIONARY_HOME) / f'{dictionary}.json.gz'
-    if ds_dict.is_file():
+    if ds_dict.is_file(): # try compressed dictionary
         with gzip.open(ds_dict, 'rt') as dic_in:
             data = json.loads(dic_in.read())
-    else:
+    elif ds_dict.with_suffix('').is_file(): # try uncompressed dictionary
+        with open(ds_dict.with_suffix(''), 'rt') as dic_in:
+            data = json.loads(dic_in.read())
+    else: # fail on not finding dictionary
         logging.error("Could not find dictionary: %s", ds_dict)
         raise FileNotFoundError(f"Could not find dictionary: {ds_dict}")
     return data
