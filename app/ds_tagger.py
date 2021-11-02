@@ -1,14 +1,12 @@
 """DocuScope Tagger setup and initialization."""
-from collections import Counter
 try:
     import ujson as json
 except ImportError:
     import json
-import re
 import gzip
 import logging
 from pathlib import Path
-from ity.tagger import ItyTagger
+from ity.tagger import ds_tagger, neo_tagger
 
 from default_settings import Config
 
@@ -16,6 +14,7 @@ def get_dictionary(dictionary):
     """Retrieve the given dictionary."""
     dictionary = dictionary or Config.DICTIONARY
     ds_dict = Path(Config.DICTIONARY_HOME) / f'{dictionary}.json.gz'
+    data = {}
     if ds_dict.is_file(): # try compressed dictionary
         with gzip.open(ds_dict, 'rt') as dic_in:
             data = json.loads(dic_in.read())
@@ -25,6 +24,17 @@ def get_dictionary(dictionary):
     else: # fail on not finding dictionary
         logging.error("Could not find dictionary: %s", ds_dict)
         raise FileNotFoundError(f"Could not find dictionary: {ds_dict}")
+    return data
+
+def get_wordclasses():
+    """ """
+    data = {}
+    wc = Path(Config.DICTIONARY_HOME) / 'wordclasses.json'
+    if wc.is_file():
+        with open(wc, 'rt', encoding="UTF-8") as wcin:
+            data = json.loads(wcin.read())
+    else:
+        logging.error("Could not find %s", wc)
     return data
 
 def create_ds_tagger(dictionary):
@@ -44,51 +54,8 @@ def create_ds_tagger(dictionary):
     if 'words' not in ds_dict:
         logging.error("Invalid dictionary format, no words: %s", dictionary)
         raise KeyError
-    return ItyTagger(dictionary, ds_dict)
+    return ds_tagger(dictionary, ds_dict)
 
-def countdict(target_list):
-    """Returns a map of co-occuring pairs of words to how many times that pair co-occured.
-    Arguments:
-    - target_list
-
-    Returns: {(word, word): count,...}"""
-    return Counter(zip(target_list, target_list[1:]))
-
-def create_tag_dict(toml_string, ds_dictionary="default"):
-    """Use DocuScope tagger to analyze a string.
-
-    Arguments:
-    toml_string: a string in TOML format.
-    ds_dictionary: a string label for a valid DocuScope dictionary.
-
-    Returns:
-    A dictionary of DocuScope tag statistics."""
-    return tag_dict(create_ds_tagger(ds_dictionary).tag_string(toml_string))
-
-def tag_dict(result):
-    """Takes the results of the tagger and creates a dictionary of relevant
-    results to be saved in the database.
-
-    Arguments:
-    result: a json coercable dictionary
-
-    Returns:
-    A dictionary of DocuScope tag statistics."""
-    doc_dict = {
-        'ds_output': re.sub(r'(\n|\s)+', ' ', result['format_output']),
-        'ds_num_included_tokens': result['num_included_tokens'],
-        'ds_num_tokens': result['num_tokens'],
-        'ds_num_word_tokens': result['num_word_tokens'],
-        'ds_num_excluded_tokens': result['num_excluded_tokens'],
-        'ds_num_punctuation_tokens': result['num_punctuation_tokens'],
-        'ds_dictionary': Config.DICTIONARY # Hardcoded as only default is used.
-    }
-    tags_dict = {}
-    for _, ds_value in result['tag_dict'].items():
-        key = ds_value['name']
-        ds_value.pop('name', None)
-        tags_dict[key] = ds_value
-    doc_dict['ds_tag_dict'] = tags_dict
-    cdict = countdict(result['tag_chain'])
-    doc_dict['ds_count_dict'] = {str(key): value for key, value in cdict.items()}
-    return doc_dict
+def create_neo_tagger():
+    """Create DocuScope Ity tagger using the Neo4J dictionary."""
+    return neo_tagger(get_wordclasses())

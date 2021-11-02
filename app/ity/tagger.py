@@ -1,34 +1,25 @@
 """ Base Ity tagger class with the main method of tag_string. """
+from collections import Counter
 import logging
+import re
 
-#import .tagger_support as ts
+from default_settings import Config
 from .tokenizers.regex_tokenizer import RegexTokenizer
 from .formatters.simple_html_formatter import SimpleHTMLFormatter
 from .taggers.docuscope_tagger import DocuscopeTagger
+from .taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
 
-#pylint: disable=too-few-public-methods
 class ItyTagger():
-    """A tagger with default settings."""
-    def __init__(self, dictionary_path=None, dictionary=None):
-
-        self.logger = logging.getLogger(__name__)
-
-        self.tagger = DocuscopeTagger(dictionary_path=dictionary_path,
-                                      dictionary=dictionary,
-                                      return_included_tags=True)
-        self.formatter = SimpleHTMLFormatter()
-        self.tokenizer = RegexTokenizer()
-        self.tagger_type = "DocuscopeTagger"
-
+    """ Base tagger class for tagging a string. """
+    def __init__(self, tagger, formatter=None, tokenizer=None, tagger_type="DocuscopeTagger"):
+        self.tagger = tagger
+        self.formatter = formatter or SimpleHTMLFormatter()
+        self.tokenizer = tokenizer or RegexTokenizer()
+        self.tagger_type = tagger_type or "DocuscopeTagger"
     def tag_string(self, string):
         """Tags a string."""
         tokens = self.tokenizer.tokenize(string)
-
-        # see DocuscopeTagger.__init__.py (returns 'rules', 'tags')
         tag_dict, tag_map = self.tagger.tag(tokens)
-
-        # self.logger.info("ItyTagger.__init__(): tag_dict = {}".format(tag_dict))
-        # self.logger.info("ItyTagger.__init__(): tag_map  = {}".format(tag_map))
 
         output_dict = {
             'text_contents': string,
@@ -58,3 +49,52 @@ class ItyTagger():
             text_str=output_dict["text_contents"])
 
         return output_dict
+    def tag(self, string):
+        """ Tags the given string and outputs json coercable dictionary. """
+        return tag_dict(self.tag_string(string))
+
+def neo_tagger(wordclasses):
+    """ Initialize a Neo4J dictionary based tagger. """
+    return ItyTagger(tagger = DocuscopeTaggerNeo(return_included_tags=True,
+                                                 wordclasses=wordclasses))
+def ds_tagger(dictionary_name, dictionary):
+    """ Initialize a JSON dictionary based tagger. """
+    return ItyTagger(tagger = DocuscopeTagger(dictionary_path=dictionary_name,
+                                              dictionary=dictionary,
+                                              return_included_tags=True))
+
+def tag_dict(result):
+    """Takes the results of the tagger and creates a dictionary of relevant
+    results to be saved in the database.
+
+    Arguments:
+    result: a json coercable dictionary
+
+    Returns:
+    A dictionary of DocuScope tag statistics."""
+    doc_dict = {
+        'ds_output': re.sub(r'(\n|\s)+', ' ', result['format_output']),
+        'ds_num_included_tokens': result['num_included_tokens'],
+        'ds_num_tokens': result['num_tokens'],
+        'ds_num_word_tokens': result['num_word_tokens'],
+        'ds_num_excluded_tokens': result['num_excluded_tokens'],
+        'ds_num_punctuation_tokens': result['num_punctuation_tokens'],
+        'ds_dictionary': Config.DICTIONARY
+    }
+    tags_dict = {}
+    for _, ds_value in result['tag_dict'].items():
+        key = ds_value['name']
+        ds_value.pop('name', None)
+        tags_dict[key] = ds_value
+    doc_dict['ds_tag_dict'] = tags_dict
+    cdict = countdict(result['tag_chain'])
+    doc_dict['ds_count_dict'] = {str(key): value for key, value in cdict.items()}
+    return doc_dict
+
+def countdict(target_list):
+    """Returns a map of co-occuring pairs of words to how many times that pair co-occured.
+    Arguments:
+    - target_list
+
+    Returns: {(word, word): count,...}"""
+    return Counter(zip(target_list, target_list[1:]))

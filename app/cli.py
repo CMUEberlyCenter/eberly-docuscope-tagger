@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from default_settings import Config
-from ds_tagger import create_ds_tagger, tag_dict
+from ds_tagger import create_ds_tagger
 import ds_db
 from docx_to_text import docx_to_text
 
@@ -83,7 +83,7 @@ def tag_entry(tagger, doc_id):
             raise FileNotFoundError(doc_id)
     if doc_content:
         try:
-            doc_processed = tag_dict(tagger.tag_string(docx_to_text(doc_content)))
+            doc_processed = tagger.tag(docx_to_text(doc_content))
             if doc_processed.get('ds_num_word_tokens', 0) == 0:
                 doc_state = "error"
                 doc_processed['error'] = 'Document failed to parse: no word tokens found.'

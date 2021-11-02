@@ -10,6 +10,10 @@ SQLAlchemy = "*"
 mysqlclient = "*"
 email-validator = "*"
 ujson = "*"
+jsondiff = "*"
+fastapi = "*"
+neo4j = "*"
+uvicorn = "*"
 
 [dev-packages]
 pylint = "*"

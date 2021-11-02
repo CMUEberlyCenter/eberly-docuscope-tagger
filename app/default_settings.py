@@ -12,6 +12,9 @@ class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
     DICTIONARY = 'default'
     DICTIONARY_HOME = os.getenv('DICTIONARY_HOME', os.path.join('/app', 'dictionaries'))
+    NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687/neo4j')
+    NEO4J_USER = get_secret('NEO4J_USER', 'neo4j')
+    NEO4J_PASS = get_secret('NEO4J_PASS', 'docuscope')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_DATABASE_URI = (
         f"mysql+mysqldb://"
