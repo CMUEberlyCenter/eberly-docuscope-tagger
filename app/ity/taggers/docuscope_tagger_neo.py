@@ -1,15 +1,14 @@
 """ The DocuScope Tagger """
 # coding=utf-8
-__author__ = 'kohlmannj'
+__author__ = 'mringenb'
 
 from copy import copy, deepcopy
 import logging
-#import os
 from neo4j import GraphDatabase
 
+from default_settings import Config
 from ..tokenizers.tokenizer import Tokenizer
 from .tagger import Tagger
-from default_settings import Config
 
 DRIVER = GraphDatabase.driver(Config.NEO4J_URI,
                               auth=(Config.NEO4J_USER, Config.NEO4J_PASS))
@@ -58,7 +57,7 @@ class DocuscopeTaggerNeo(Tagger):
             return_excluded_tags=False,
             return_included_tags=False,
             allow_overlapping_tags=False,
-            wordclasses={}
+            wordclasses=None
     ):
         super().__init__(
             label=label,
@@ -71,9 +70,8 @@ class DocuscopeTaggerNeo(Tagger):
             return_excluded_tags=return_excluded_tags,
             return_included_tags=return_included_tags
         )
-
-        self.logger = logging.getLogger(__name__)
-        self.wordclasses = wordclasses
+        self.session = None
+        self.wordclasses = wordclasses or {}
 
         # This is a weird setting
         self.allow_overlapping_tags = allow_overlapping_tags
@@ -121,12 +119,14 @@ class DocuscopeTaggerNeo(Tagger):
         first_tokens = self._get_ds_words_for_token_index(self.token_index)
         second_tokens = self._get_ds_words_for_token_index(next_token_index)
         rules = self.session.read_transaction(get_lat_rules, first_tokens, second_tokens)
-        rules.sort(reverse=True, key=lambda p: len(p.path))
-        ds_rule = next((r for r in rules if self._long_rule_applies_at_token_index(r)), None)
+        rules.sort(reverse=True, key=lambda p: len(p["path"]))
+        ds_rule = next((r for r in rules if self._long_rule_applies_at_token_index(r['path'])), None)
+        
         if ds_rule is not None:
             rule["name"] = ds_rule["lat"]
             rule["full_name"] = ".".join([self.full_label, rule["name"]])
-            last_token_index = self._get_nth_next_included_token_index(offset=len(ds_rule["path"]) - 1)
+            last_token_index = self._get_nth_next_included_token_index(
+                offset=len(ds_rule["path"]) - 1)
             tag.update(
                 rules=[(rule["full_name"], ds_rule["path"])],
                 index_start=self.token_index,
@@ -184,7 +184,7 @@ class DocuscopeTaggerNeo(Tagger):
             # Try to find a short rule for one of this token's ds_words.
             lat, matching_ds_word = self.session.read_transaction(get_short_rules, token_ds_words)
             rule["name"] = lat
-            
+
             # Handle "no rule" included tokens (words and punctuation that
             # exist in the Docuscope dictionary's words dict but do not have
             # an applicable rule).
@@ -283,24 +283,27 @@ class DocuscopeTaggerNeo(Tagger):
         # Return the goods.
         return rules, tags
 
-def get_lat_rules(tx, first_tokens, second_tokens):
+def get_lat_rules(trx, first_tokens, second_tokens):
     """ Retrieve the LAT rules starting with the given bigram. """
-    result = tx.run("MATCH p = (s:Start)-[n:NEXT]->()-[*0..25]->(l:Lat) "
-                    "WHERE s.word in $first AND n.word IN $second "
-                    "RETURN s.word AS start, relationships(p) as path, "
-                    "l.lat as lat", first=first_tokens, second=second_tokens)
-    return [{lat: record["lat"],
-             pattern: [record["start"],
-                       *[path["word"] for path in record["path"]
-                         if path["type"] == "NEXT"]]}
+    result = trx.run("MATCH p = (s:Start)-[n:NEXT]->()-[*0..25]->(l:Lat) "
+                     "WHERE s.word IN $first AND n.word IN $second "
+                     "RETURN s.word AS start, relationships(p) as path, "
+                     "l.lat as lat", first=first_tokens, second=second_tokens)
+    # duck type NEXT as type is not in record properties.
+    return [{"lat": record["lat"],
+             "path": [record["start"],
+                      *[path["word"] for path in record["path"]
+                        if "word" in path]]}
             for record in result]
 
-def get_short_rules(tx, first_tokens):
+def get_short_rules(trx, first_tokens):
     """ Retrieve the unigram LAT rule for the given token. """
-    result = tx.run("MATCH (s:Start)-[:LAT]->(l:Lat) WHERE s.word IN $first "
-                    "RETURN s.word AS token, l.lat AS lat "
-                    "ORDER BY token DESC, lat DESC LIMIT 1", first=first_tokens)
-    if result.single():
-        record = result.single()[0]
-        return record["lat"], record["token"]
+    result = trx.run("MATCH (s:Start)-[:LAT]->(l:Lat) WHERE s.word IN $first "
+                     "RETURN s.word AS token, l.lat AS lat "
+                     "ORDER BY token DESC, lat DESC LIMIT 1",
+                     first=first_tokens)
+    res = [{"lat": record["lat"], "path": [record["token"]]} for record in result]
+    if len(res) > 0:
+        record = res[0]
+        return record["lat"], record["path"][0]
     return None, None

@@ -27,14 +27,16 @@ def get_dictionary(dictionary):
     return data
 
 def get_wordclasses():
-    """ """
+    """Retrieve the wordclasses from the wordclasses.json file."""
     data = {}
-    wc = Path(Config.DICTIONARY_HOME) / 'wordclasses.json'
-    if wc.is_file():
-        with open(wc, 'rt', encoding="UTF-8") as wcin:
+    wcs = Path(Config.DICTIONARY_HOME) / 'wordclasses.json'
+    if wcs.is_file():
+        with open(wcs, 'rt', encoding="UTF-8") as wcin:
             data = json.loads(wcin.read())
     else:
-        logging.error("Could not find %s", wc)
+        logging.error("Could not find %s", wcs)
+    if data == {}:
+        logging.error("No wordclasses in %s", wcs)
     return data
 
 def create_ds_tagger(dictionary):

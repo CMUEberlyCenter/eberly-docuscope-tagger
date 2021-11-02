@@ -1,6 +1,5 @@
 """ Base Ity tagger class with the main method of tag_string. """
 from collections import Counter
-import logging
 import re
 
 from default_settings import Config
@@ -51,7 +50,7 @@ class ItyTagger():
         return output_dict
     def tag(self, string):
         """ Tags the given string and outputs json coercable dictionary. """
-        return tag_dict(self.tag_string(string))
+        return tag_json(self.tag_string(string))
 
 def neo_tagger(wordclasses):
     """ Initialize a Neo4J dictionary based tagger. """
@@ -63,7 +62,7 @@ def ds_tagger(dictionary_name, dictionary):
                                               dictionary=dictionary,
                                               return_included_tags=True))
 
-def tag_dict(result):
+def tag_json(result):
     """Takes the results of the tagger and creates a dictionary of relevant
     results to be saved in the database.
 
@@ -85,6 +84,7 @@ def tag_dict(result):
     for _, ds_value in result['tag_dict'].items():
         key = ds_value['name']
         ds_value.pop('name', None)
+        ds_value.pop('full_name', None) # unused in analysis and large
         tags_dict[key] = ds_value
     doc_dict['ds_tag_dict'] = tags_dict
     cdict = countdict(result['tag_chain'])

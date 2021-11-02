@@ -2,6 +2,7 @@
 import logging
 import traceback
 from uuid import UUID
+from difflib import ndiff
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from jsondiff import diff
@@ -51,13 +52,13 @@ def session():
 #TAGGER = create_ds_tagger(Config.DICTIONARY)
 #logging.warning("Tagger loaded")
 
-def tag_document(doc_id: UUID, db: Session):
+def tag_document(doc_id: UUID, sql: Session):
     """ Tag the document of the given id. """
     doc_state = "error"
     doc_processed = {'error': 'No file data to process.'}
-    (doc_content,) = db.query(Filesystem.content).filter(Filesystem.id == doc_id).first()
+    (doc_content,) = sql.query(Filesystem.content).filter(Filesystem.id == doc_id).first()
     if doc_content:
-        db.query(Filesystem).filter(Filesystem.id == doc_id).update(
+        sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
             {"state": "submitted"}, synchronize_session=False)
         try:
             doc_processed = TAGGER.tag(docx_to_text(doc_content))
@@ -74,14 +75,14 @@ def tag_document(doc_id: UUID, db: Session):
             doc_processed['error'] = f'{exc}'
             doc_processed['trace'] = traceback.format_exc()
             doc_state = 'error'
-    db.query(Filesystem).filter(Filesystem.id == doc_id).update(
-            {"state": doc_state, "processed": doc_processed})
+    sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
+        {"state": doc_state, "processed": doc_processed})
     logging.info("Finished tagging %s (%s)", doc_id, doc_state)
 
 @app.get("/tag/{uuid}")
 async def tag(uuid: UUID,
               background_tasks: BackgroundTasks,
-              db: Session = Depends(session)):
+              sql: Session = Depends(session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
     try:
@@ -90,12 +91,12 @@ async def tag(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    (state,) = db.query(Filesystem.state).filter(Filesystem.id == uuid).first()
+    (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
     #match (state):
     #    case 'pending':
     if state == 'pending':
         # check for too many submitted
-        background_tasks.add_task(tag_document, uuid, db)
+        background_tasks.add_task(tag_document, uuid, sql)
         return {"message": f"Tagging of {uuid} started."}
     #    case 'submitted':
     if state == 'submitted':
@@ -119,7 +120,7 @@ NEO_TAGGER = create_neo_tagger()
 
 @app.get("/test/{uuid}")
 async def test_tagging(uuid: UUID,
-                       db: Session = Depends(session)):
+                       sql: Session = Depends(session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
     try:
@@ -128,7 +129,7 @@ async def test_tagging(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    (state,) = db.query(Filesystem.state).filter(Filesystem.id == uuid).first()
+    (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
     #match (state):
     #    case 'pending':
     #    case 'submitted':
@@ -137,7 +138,7 @@ async def test_tagging(uuid: UUID,
     #    case 'tagged':
     if state == 'tagged':
         # check for too many submitted
-        return check_tagging(uuid, db)
+        return check_tagging(uuid, sql)
 
     #    case 'error':
     if state == 'error':
@@ -151,17 +152,28 @@ async def test_tagging(uuid: UUID,
     raise HTTPException(detail=f"Unknown state: {state} for {uuid}",
                         status_code=HTTP_503_SERVICE_UNAVAILABLE)
 
-def check_tagging(doc_id: UUID, db: Session):
-    """ """
-    (doc_content, doc_processed) = db.query(Filesystem.content, Filesystem.processed).filter(Filesystem.id == doc_id).first()
+def check_tagging(doc_id: UUID, sql: Session):
+    """Perform tagging with neo4j tagger and check against the database. """
+    (doc_content, doc_processed) = sql.query(Filesystem.content,
+                                            Filesystem.processed).filter(
+                                                Filesystem.id == doc_id).first()
     if doc_content:
         # tag document
         processed = NEO_TAGGER.tag(docx_to_text(doc_content))
-        df = diff(doc_processed, processed)
-        logging.info("diff: %s", df)
-        return processed #{"message": 'NeoTagging successfull.'}
-    else:
-        logging.error("No document content for %s.", doc_id)
-        raise HTTPException(detail=f"No document content for {doc_id}.",
-                            status_code=HTTP_404_NOT_FOUND)
-
+        tag_diff = diff(doc_processed, processed)
+        logging.warning("diff: %s", tag_diff)
+        if doc_processed['ds_output'] != processed['ds_output']:
+            print(''.join(ndiff("</span>\n".join(doc_processed['ds_output'].split('</span>')).splitlines(keepends=True), "</span>\n".join(processed['ds_output'].split("</span>")).splitlines(keepends=True))), end="")
+        return {
+            "output_check": doc_processed['ds_output'] == processed['ds_output'],
+            #"included_check": doc_processed['ds_num_included_tokens'] == processed['ds_num_included_tokens'],
+            "token_check": doc_processed['ds_num_tokens'] == processed['ds_num_tokens'],
+            #"word_check": doc_processed['ds_num_word_tokens'] == processed['ds_num_word_tokens'],
+            #"exclude_check": doc_processed['ds_num_excluded_tokens'] == processed['ds_num_excluded_tokens'],
+            #"punctuation_check": doc_processed['ds_num_punctuation_tokens'] == processed['ds_num_punctuation_tokens'],
+            "tag_dict_check": len(doc_processed['ds_tag_dict']) - len(processed['ds_tag_dict']),
+            #"tag_count": str(diff(doc_processed['ds_count_dict'], processed['ds_count_dict']))
+        }
+    logging.error("No document content for %s.", doc_id)
+    raise HTTPException(detail=f"No document content for {doc_id}.",
+                        status_code=HTTP_404_NOT_FOUND)
