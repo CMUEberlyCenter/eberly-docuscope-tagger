@@ -118,7 +118,9 @@ class DocuscopeTaggerNeo(Tagger):
 
         first_tokens = self._get_ds_words_for_token_index(self.token_index)
         second_tokens = self._get_ds_words_for_token_index(next_token_index)
-        rules = self.session.read_transaction(get_lat_rules, first_tokens, second_tokens)
+        third_token_index = self._get_nth_next_included_token_index(starting_token_index=next_token_index)
+        third_tokens = self._get_ds_words_for_token_index(third_token_index) if third_token_index else [] 
+        rules = self.session.read_transaction(get_lat_rules, first_tokens, second_tokens, third_tokens)
         rules.sort(reverse=True, key=lambda p: len(p["path"]))
         ds_rule = next((r for r in rules if self._long_rule_applies_at_token_index(r['path'])), None)
         
@@ -283,12 +285,17 @@ class DocuscopeTaggerNeo(Tagger):
         # Return the goods.
         return rules, tags
 
-def get_lat_rules(trx, first_tokens, second_tokens):
+def get_lat_rules(trx, first_tokens, second_tokens, third_tokens):
     """ Retrieve the LAT rules starting with the given bigram. """
-    result = trx.run("MATCH p = (s:Start)-[n:NEXT]->()-[*0..25]->(l:Lat) "
+    result = trx.run("MATCH p = (s:Start)-[n:NEXT]->()-[nn:NEXT]->()-[*0..25]->(l:Lat) "
+                     "WHERE s.word IN $first AND n.word IN $second AND nn.word IN $third "
+                     "RETURN s.word AS start, relationships(p) as path, "
+                     "l.lat as lat "
+                     "UNION MATCH p = (s:Start)-[n:NEXT]->()-->(l:Lat) "
                      "WHERE s.word IN $first AND n.word IN $second "
                      "RETURN s.word AS start, relationships(p) as path, "
-                     "l.lat as lat", first=first_tokens, second=second_tokens)
+                     "l.lat as lat ",
+                     first=first_tokens, second=second_tokens, third=third_tokens)
     # duck type NEXT as type is not in record properties.
     return [{"lat": record["lat"],
              "path": [record["start"],
