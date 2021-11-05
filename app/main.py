@@ -152,6 +152,10 @@ async def test_tagging(uuid: UUID,
     raise HTTPException(detail=f"Unknown state: {state} for {uuid}",
                         status_code=HTTP_503_SERVICE_UNAVAILABLE)
 
+@app.post('/batchtest')
+def test_corpus(corpus: list[UUID], sql: Session = Depends(session)):
+    return {uuid: check_tagging(uuid, sql) for uuid in corpus}
+
 def check_tagging(doc_id: UUID, sql: Session):
     """Perform tagging with neo4j tagger and check against the database. """
     (doc_content, doc_processed) = sql.query(Filesystem.content,
