@@ -6,7 +6,7 @@ except ImportError:
 import gzip
 import logging
 from pathlib import Path
-from ity.tagger import ds_tagger, neo_tagger
+from ity.tagger import ds_tagger
 
 from default_settings import Config
 
@@ -57,7 +57,3 @@ def create_ds_tagger(dictionary):
         logging.error("Invalid dictionary format, no words: %s", dictionary)
         raise KeyError
     return ds_tagger(dictionary, ds_dict)
-
-def create_neo_tagger():
-    """Create DocuScope Ity tagger using the Neo4J dictionary."""
-    return neo_tagger(get_wordclasses())

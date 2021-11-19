@@ -52,10 +52,13 @@ class ItyTagger():
         """ Tags the given string and outputs json coercable dictionary. """
         return tag_json(self.tag_string(string))
 
-def neo_tagger(wordclasses):
+def neo_tagger(wordclasses, neo):
     """ Initialize a Neo4J dictionary based tagger. """
-    return ItyTagger(tagger = DocuscopeTaggerNeo(return_included_tags=True,
-                                                 wordclasses=wordclasses))
+    return ItyTagger(
+        tagger = DocuscopeTaggerNeo(
+            return_included_tags=True,
+            wordclasses=wordclasses,
+            session=neo))
 def ds_tagger(dictionary_name, dictionary):
     """ Initialize a JSON dictionary based tagger. """
     return ItyTagger(tagger = DocuscopeTagger(dictionary_path=dictionary_name,

@@ -3,9 +3,29 @@
 __author__ = 'kohlmannj'
 
 import abc
+from copy import copy, deepcopy
+from typing import List, Optional, Tuple
+
+from pydantic.main import BaseModel
 from ..base import BaseClass
 from ..tokenizers.tokenizer import Tokenizer
 
+class TaggerRule(BaseModel):
+    """Model for Tagger rules."""
+    name: str
+    full_name: str
+    num_tags: int
+    num_included_tokens: int
+class TaggerTag(BaseModel):
+    """Model for Tagger tags."""
+    rules: List[Tuple[str, List[str]]]
+    index_start: int
+    index_end: int
+    len: int
+    pos_start: int
+    pos_end: int
+    token_end_len: int
+    num_included_tokens: int
 
 class Tagger(BaseClass):
     """
@@ -153,7 +173,7 @@ class Tagger(BaseClass):
 
     # Note that the name and full_name values are intentionally invalid
     # according to Tagger._is_valid_rule().
-    empty_rule = {
+    empty_rule: TaggerRule = {
         "name": None,
         "full_name": None,
         "num_tags": 0,
@@ -162,7 +182,7 @@ class Tagger(BaseClass):
 
     # Note that the index and pos values in this empty tag are intentionally
     # invalid according to Tagger._is_valid_tag().
-    empty_tag = {
+    empty_tag: TaggerTag = {
         "rules": [],
         "index_start": -1,
         "index_end": -1,
@@ -283,7 +303,7 @@ class Tagger(BaseClass):
         ])
 
     @property
-    def meta_rule_names(self):
+    def meta_rule_names(self) -> list[str]:
         """
         A property containing the list of all "meta" rules.
 
@@ -297,7 +317,7 @@ class Tagger(BaseClass):
         ]
 
     @property
-    def excluded_meta_rule_names(self):
+    def excluded_meta_rule_names(self) -> list[str]:
         """
         A property containing the list of "meta" rule names which are to be
         excluded from the output of self.tag().
@@ -315,7 +335,7 @@ class Tagger(BaseClass):
             excluded_meta_rule_names.append(self.excluded_rule_name)
         return excluded_meta_rule_names
 
-    def _should_return_rule(self, rule):
+    def _should_return_rule(self, rule) -> bool:
         """
         A convenient method to determine if self.tag() should return a
         particular rule (and its corresponding tag). It should return it if:
@@ -335,7 +355,7 @@ class Tagger(BaseClass):
             )
         )
 
-    def _is_valid_rule(self, rule):
+    def _is_valid_rule(self, rule) -> bool:
         """
         A convenient method to validate a rule dict. Rule dicts must contain:
 
@@ -367,7 +387,7 @@ class Tagger(BaseClass):
             rule["num_included_tokens"] >= 0
         )
 
-    def _is_valid_tag(self, tag):
+    def _is_valid_tag(self, tag) -> bool:
         """
         A convenient method to validate a tag dict. Tag dicts must contain:
 
@@ -396,7 +416,7 @@ class Tagger(BaseClass):
             tag["token_end_len"] > 0
         )
 
-    def _get_nth_next_included_token_index(self, starting_token_index=None, offset=1):
+    def _get_nth_next_included_token_index(self, starting_token_index=None, offset=1) -> Optional[int]:
         """
         A helper method to get the index of the next token that is not an
         excluded token type, given a starting token index (or self.token_index).
@@ -428,7 +448,7 @@ class Tagger(BaseClass):
         return next_token_index
 
     @abc.abstractmethod
-    def tag(self, tokens):
+    def tag(self, tokens) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         """
         An abstract method where all the tagging of the tokens list happens.
         It's recommended to assign the tokens argument to self.tokens
@@ -444,3 +464,10 @@ class Tagger(BaseClass):
         :rtype: dict of dicts and list of dicts
         """
         return {}, []
+
+def generate_empty_rule() -> TaggerRule:
+    """Generate a new empty tagger rule."""
+    return copy(Tagger.empty_rule)
+def generate_empty_tag() -> TaggerTag:
+    """Generate a new empty tagger tag."""
+    return deepcopy(Tagger.empty_tag)
