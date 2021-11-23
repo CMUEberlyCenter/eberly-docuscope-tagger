@@ -14,6 +14,7 @@ def pithify(rule_name):
 
 class SimpleHTMLFormatter(Formatter):
     """ Format tagged document as simple HTML. """
+
     def __init__(
             self,
             template="base.html",
@@ -21,21 +22,18 @@ class SimpleHTMLFormatter(Formatter):
             portable=False,
             tag_maps_per_page=2000,
     ):
-
         super().__init__()
-        self.template_root = template_root
-        if self.template_root is None:
-            self.template_root = os.path.join(
+        root = template_root
+        if root is None:
+            root = os.path.join(
                 os.path.dirname(__file__),
                 "templates"
             )
         # Jinja2 Environment initialization
         self.env = Environment(
-            loader=FileSystemLoader(searchpath=self.template_root),
+            loader=FileSystemLoader(searchpath=root),
             autoescape=select_autoescape(['html', 'xml']),
-            extensions=[
-                'jinja2.ext.do'
-            ]
+            extensions=['jinja2.ext.do']
         )
         self.env.filters['pithify'] = pithify
         # Template Initialization
@@ -47,8 +45,7 @@ class SimpleHTMLFormatter(Formatter):
         self.token_str_to_output_index = -1
         self.token_whitespace_newline_str_to_output_index = 0
 
-    def format(self, output_path=None, rules=None,
-               tags=None, tokens=None, text_str=None):
+    def format(self, tags=None, tokens=None, text_str=None):
         if (tags is None or tokens is None or text_str is None):
             raise ValueError("Not enough valid input data given to format() method.")
 

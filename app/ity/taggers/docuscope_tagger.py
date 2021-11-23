@@ -2,8 +2,15 @@
 # coding=utf-8
 __author__ = 'kohlmannj'
 
-from ..tokenizers.tokenizer import Tokenizer
+from typing import Optional
+from pydantic.main import BaseModel
 from .docuscope_tagger_base import DocuscopeTaggerBase
+
+class DocuscopeDictionary(BaseModel):
+    """Model for DocuScope dictionaries."""
+    rules: dict[str, dict[str, dict[str, list[list[str]]]]]
+    shortRules: dict[str, str]
+    words: dict[str, list[str]]
 
 class DocuscopeTagger(DocuscopeTaggerBase):
     """
@@ -16,35 +23,12 @@ class DocuscopeTagger(DocuscopeTaggerBase):
     """
 
     def __init__(
-            self,
-            label="",
-            excluded_token_types=(
-                Tokenizer.TYPES["WHITESPACE"],
-                Tokenizer.TYPES["NEWLINE"]
-            ),
-            untagged_rule_name=None,
-            no_rules_rule_name=None,
-            excluded_rule_name=None,
-            return_untagged_tags=False,
-            return_no_rules_tags=False,
-            return_excluded_tags=False,
-            return_included_tags=False,
-            allow_overlapping_tags=False,
-            dictionary=None,
-            dictionary_path="default"
+            self, *args,
+            dictionary: Optional[DocuscopeDictionary]=None,
+            dictionary_path: Optional[str]="default",
+            **kwargs
     ):
-        super().__init__(
-            label=label,
-            excluded_token_types=excluded_token_types,
-            untagged_rule_name=untagged_rule_name,
-            no_rules_rule_name=no_rules_rule_name,
-            excluded_rule_name=excluded_rule_name,
-            return_untagged_tags=return_untagged_tags,
-            return_no_rules_tags=return_no_rules_tags,
-            return_excluded_tags=return_excluded_tags,
-            return_included_tags=return_included_tags,
-            allow_overlapping_tags=allow_overlapping_tags
-        )
+        super().__init__(*args, **kwargs)
         dictionary = dictionary or {"words":{}, "rules":{}, "shortRules":{}}
 
         # Allow DocuscopeTagger to be initialized with a different path to the Docuscope dictionary.
@@ -68,13 +52,14 @@ class DocuscopeTagger(DocuscopeTaggerBase):
             self._ds_dict["rules"] = {}
         if "shortRules" not in self._ds_dict:
             self._ds_dict["shortRules"] = {}
-        self.wordclasses = self._ds_dict["words"]
+        self.wordclasses: dict[str, list[str]] = self._ds_dict["words"]
 
     def get_long_rule(self):
         next_token_index = self._get_nth_next_included_token_index()
         best_ds_rule = None
         best_ds_lat = None
         best_ds_rule_len = 0
+        # pylint: disable=too-many-nested-blocks
         for token_ds_word in self._get_ds_words_for_token_index(self.token_index):
             try:
                 rule_dict = self._ds_dict["rules"][token_ds_word]

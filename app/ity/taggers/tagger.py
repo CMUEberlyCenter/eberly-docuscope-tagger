@@ -27,7 +27,7 @@ class TaggerTag(BaseModel):
     token_end_len: int
     num_included_tokens: int
 
-class Tagger(BaseClass):
+class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     """
     This is the Ity Tagger base class. It contains an abstract method, tag(),
     which accepts a list of tokens as input (as returned by an Ity
@@ -192,19 +192,19 @@ class Tagger(BaseClass):
         "token_end_len": 0,
         "num_included_tokens": 0
     }
-
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
-            label=None,
+            label: Optional[str]=None,
             excluded_token_types=(),
-            case_sensitive=True,
-            untagged_rule_name=None,
-            no_rules_rule_name=None,
-            excluded_rule_name=None,
-            return_untagged_tags=False,
-            return_no_rules_tags=False,
-            return_excluded_tags=False,
-            return_included_tags=False
+            case_sensitive: bool=True,
+            untagged_rule_name: Optional[str]=None,
+            no_rules_rule_name: Optional[str]=None,
+            excluded_rule_name: Optional[str]=None,
+            return_untagged_tags: bool=False,
+            return_no_rules_tags: bool=False,
+            return_excluded_tags: bool=False,
+            return_included_tags: bool=False
     ):
         """
         The Tagger constructor. Note the defaults---the Tagger base class is
@@ -416,7 +416,10 @@ class Tagger(BaseClass):
             tag["token_end_len"] > 0
         )
 
-    def _get_nth_next_included_token_index(self, starting_token_index=None, offset=1) -> Optional[int]:
+    def _get_nth_next_included_token_index(
+            self,
+            starting_token_index=None,
+            offset=1) -> Optional[int]:
         """
         A helper method to get the index of the next token that is not an
         excluded token type, given a starting token index (or self.token_index).

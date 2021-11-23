@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import logging
 import traceback
-from typing import Dict, List
+from typing import Dict
 from uuid import UUID
 from difflib import ndiff
 
@@ -13,7 +13,6 @@ import neo4j
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.sql.sqltypes import Integer
 #from starlette.middeware.cors import CORSMiddleware
 import uvicorn
 
@@ -47,15 +46,19 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    global DRIVER
+    """Initialize some important static data on startup.
+    Loads the _wordclasses json file for use by tagger.
+    Initializes database driver."""
+    global DRIVER # pylint: disable=global-statement
     DRIVER = GraphDatabase.driver(
         Config.NEO4J_URI,
         auth=(Config.NEO4J_USER, Config.NEO4J_PASS))
-    global WORDCLASSES
+    global WORDCLASSES # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()
 
 @app.on_event("shutdown")
 def shutdown_event():
+    """Shutdown event handler.  Closes database connection cleanly."""
     if DRIVER is not None:
         DRIVER.close()
 

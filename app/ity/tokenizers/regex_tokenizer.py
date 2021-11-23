@@ -4,6 +4,7 @@ __author__ = 'kohlmannj'
 
 import re
 from html import unescape
+from typing import Optional
 from .tokenizer import Tokenizer
 
 
@@ -183,16 +184,13 @@ class RegexTokenizer(Tokenizer):
         )
     """
 
-    def __init__(self,
-                 label=None,
-                 excluded_token_types=(),
-                 case_sensitive=True,
-                 preserve_original_strs=False,
-                 remove_hyphen_breaks=True,
-                 convert_entities=True,
-                 convert_newlines=True,
-                 condense_whitespace=None,
-                 condense_newlines=None):
+    def __init__(self, *args,
+                 remove_hyphen_breaks: bool=True,
+                 convert_entities: bool=True,
+                 convert_newlines: bool=True,
+                 condense_whitespace: Optional[str]=None,
+                 condense_newlines: Optional[str]=None,
+                 **kwargs):
         """
         Instantiates a RegexTokenizer. The initialization options below affect
         the output of the self.tokenize() and self.batch_tokenize() methods.
@@ -250,12 +248,7 @@ class RegexTokenizer(Tokenizer):
                                argument is set to None.
                                (default None)
         """
-        super().__init__(
-            label=label,
-            excluded_token_types=excluded_token_types,
-            case_sensitive=case_sensitive,
-            preserve_original_strs=preserve_original_strs
-        )
+        super().__init__(*args, **kwargs)
         # Initialize instance fields for later reference.
         self.remove_hyphen_breaks = remove_hyphen_breaks
         self.convert_entities = convert_entities

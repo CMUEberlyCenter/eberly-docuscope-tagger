@@ -6,7 +6,6 @@ from collections import OrderedDict
 from typing import Optional
 from neo4j import Transaction
 import neo4j
-from ..tokenizers.tokenizer import Tokenizer
 from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule
 
 class DocuscopeTaggerNeo(DocuscopeTaggerBase):
@@ -16,48 +15,26 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
     """
 
     def __init__(
-            self,
-            label="",
-            excluded_token_types=(
-                Tokenizer.TYPES["WHITESPACE"],
-                Tokenizer.TYPES["NEWLINE"]
-            ),
-            untagged_rule_name=None,
-            no_rules_rule_name=None,
-            excluded_rule_name=None,
-            return_untagged_tags=False,
-            return_no_rules_tags=False,
-            return_excluded_tags=False,
-            return_included_tags=False,
-            allow_overlapping_tags=False,
-            wordclasses=None,
-            session: Optional[neo4j.Session]=None
-    ):
-        super().__init__(
-            label=label,
-            excluded_token_types=excluded_token_types,
-            untagged_rule_name=untagged_rule_name,
-            no_rules_rule_name=no_rules_rule_name,
-            excluded_rule_name=excluded_rule_name,
-            return_untagged_tags=return_untagged_tags,
-            return_no_rules_tags=return_no_rules_tags,
-            return_excluded_tags=return_excluded_tags,
-            return_included_tags=return_included_tags,
-            allow_overlapping_tags=allow_overlapping_tags
-        )
+            self, *args,
+            wordclasses: Optional[dict[str, list[str]]]=None,
+            session: Optional[neo4j.Session]=None,
+            **kwargs):
+        super().__init__(*args, **kwargs)
         self.session = session
         self.wordclasses = wordclasses or {}
-        self._label += ".default"
+        self._label = (self._label if self._label else "") + ".default"
 
     def get_long_rule(self) -> Optional[LatRule]:
         first_tokens = self._get_ds_words_for_token_index(self.token_index)
         second_token_index = self._get_nth_next_included_token_index()
         second_tokens = self._get_ds_words_for_token_index(second_token_index) \
             if second_token_index else [] # should not happen, but just in case
-        third_token_index = self._get_nth_next_included_token_index(starting_token_index=second_token_index)
+        third_token_index = self._get_nth_next_included_token_index(
+            starting_token_index=second_token_index)
         third_tokens = self._get_ds_words_for_token_index(third_token_index) \
             if third_token_index else []
-        fourth_token_index = self._get_nth_next_included_token_index(starting_token_index=third_token_index)
+        fourth_token_index = self._get_nth_next_included_token_index(
+            starting_token_index=third_token_index)
         fourth_tokens = self._get_ds_words_for_token_index(fourth_token_index) \
             if fourth_token_index else []
         rules = self.session.read_transaction(
@@ -77,13 +54,15 @@ def get_lat_rules(
         second_tokens: tuple[str],
         third_tokens: tuple[str], fourth_tokens: tuple[str]) -> list[LatRule]:
     """ Retrieve the LAT rules starting with the given bi-/tri-gram. """
-    hsh = ",".join([*first_tokens, SEPARATOR, *second_tokens, SEPARATOR, *third_tokens, SEPARATOR, *fourth_tokens])
+    hsh = ",".join([*first_tokens, SEPARATOR, *second_tokens,
+                    SEPARATOR, *third_tokens, SEPARATOR, *fourth_tokens])
     res = CACHE.get(hsh)
     if res is None:
         if len(fourth_tokens) > 0:
             result = trx.run(
                 "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[w4:NEXT]->()-[*1..25]->(l:Lat) "
-                "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third AND w4.word IN $fourth "
+                "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third "
+                "AND w4.word IN $fourth "
                 "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat " # ORDER BY length(p) DESC "
                 "UNION MATCH p = (s:Start)-[n:NEXT]->()-[m:NEXT]->()-[:LAT]->(l:Lat) "

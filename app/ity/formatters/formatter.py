@@ -3,6 +3,7 @@
 __author__ = 'kohlmannj'
 
 import abc
+from typing import Optional
 from ..base import BaseClass
 
 
@@ -51,16 +52,15 @@ class Formatter(BaseClass):
 
     * **Paginated** templates output directories.**
     """
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
-            label=None,
-            token_str_index=-1,
-            token_whitespace_newline_str_index=0,
-            standalone=True,
-            paginated=False):
-        super().__init__(
-            label=label
-        )
+            label: Optional[str]=None,
+            token_str_index: int=-1,
+            token_whitespace_newline_str_index: int=0,
+            standalone: bool=True,
+            paginated: bool=False):
+        super().__init__(label=label)
         self.token_str_index = token_str_index
         self.token_whitespace_newline_str_index = token_whitespace_newline_str_index
         self.standalone = standalone
@@ -69,8 +69,8 @@ class Formatter(BaseClass):
     @abc.abstractmethod
     def format(
             self,
-            output_path=None,
-            rules=None,
+            #output_path=None, #unused
+            #rules=None, #unused
             tags=None,
             tokens=None,
             text_str=None):

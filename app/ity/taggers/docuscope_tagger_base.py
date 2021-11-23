@@ -3,7 +3,7 @@
 
 import abc
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 from pydantic import BaseModel
 
 from ..tokenizers.tokenizer import Tokenizer
@@ -50,34 +50,19 @@ class DocuscopeTaggerBase(Tagger):
 
     def __init__(
             self,
-            label="",
+            *args,
+            allow_overlapping_tags: bool=False,
             excluded_token_types=(
                 Tokenizer.TYPES["WHITESPACE"],
                 Tokenizer.TYPES["NEWLINE"]
             ),
-            untagged_rule_name=None,
-            no_rules_rule_name=None,
-            excluded_rule_name=None,
-            return_untagged_tags=False,
-            return_no_rules_tags=False,
-            return_excluded_tags=False,
-            return_included_tags=False,
-            allow_overlapping_tags=False,
-    ):
+            **kwargs):
         super().__init__(
-            label=label,
             excluded_token_types=excluded_token_types,
-            untagged_rule_name=untagged_rule_name,
-            no_rules_rule_name=no_rules_rule_name,
-            excluded_rule_name=excluded_rule_name,
-            return_untagged_tags=return_untagged_tags,
-            return_no_rules_tags=return_no_rules_tags,
-            return_excluded_tags=return_excluded_tags,
-            return_included_tags=return_included_tags
-        )
+            *args, **kwargs)
         # This is a weird setting
         self.allow_overlapping_tags = allow_overlapping_tags
-        self.wordclasses = {}
+        self.wordclasses: dict[str, list[str]] = {}
 
     def _get_ds_words_for_token(self, token, case_sensitive=False) -> list[str]:
         """ Get all the string representations of this token. """

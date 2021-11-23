@@ -7,10 +7,10 @@ import gzip
 import logging
 from pathlib import Path
 from ity.tagger import ds_tagger
-
+from ity.taggers.docuscope_tagger import DocuscopeDictionary
 from default_settings import Config
 
-def get_dictionary(dictionary):
+def get_dictionary(dictionary) -> DocuscopeDictionary:
     """Retrieve the given dictionary."""
     dictionary = dictionary or Config.DICTIONARY
     ds_dict = Path(Config.DICTIONARY_HOME) / f'{dictionary}.json.gz'
@@ -26,7 +26,7 @@ def get_dictionary(dictionary):
         raise FileNotFoundError(f"Could not find dictionary: {ds_dict}")
     return data
 
-def get_wordclasses():
+def get_wordclasses() -> dict[str, list[str]]:
     """Retrieve the wordclasses from the wordclasses.json file."""
     data = {}
     wcs = Path(Config.DICTIONARY_HOME) / 'wordclasses.json'

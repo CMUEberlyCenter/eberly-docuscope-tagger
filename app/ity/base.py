@@ -3,6 +3,7 @@
 __author__ = 'kohlmannj'
 
 from abc import ABC
+from typing import Optional
 
 
 class BaseClass(ABC):
@@ -35,7 +36,7 @@ class BaseClass(ABC):
     """
     #__metaclass__ = abc.ABCMeta
 
-    def __init__(self, label=None):
+    def __init__(self, label: Optional[str]=None):
         self._label = label
         self._full_label = ""
 
