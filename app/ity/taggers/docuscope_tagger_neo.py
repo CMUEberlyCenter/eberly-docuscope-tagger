@@ -3,7 +3,6 @@
 __author__ = 'mringenb'
 
 from collections import OrderedDict
-import logging
 from typing import Optional
 from neo4j import Transaction
 import neo4j
