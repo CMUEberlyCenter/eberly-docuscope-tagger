@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 from pydantic import BaseModel
 
-from ..tokenizers.tokenizer import Tokenizer
+from ..tokenizers.tokenizer import Token, TokenType, Tokenizer
 from .tagger import Tagger, TaggerRule, TaggerTag, generate_empty_rule, generate_empty_tag
 
 class LatRule(BaseModel):
@@ -53,8 +53,8 @@ class DocuscopeTaggerBase(Tagger):
             *args,
             allow_overlapping_tags: bool=False,
             excluded_token_types=(
-                Tokenizer.TYPES["WHITESPACE"],
-                Tokenizer.TYPES["NEWLINE"]
+                TokenType.WHITESPACE,
+                TokenType.NEWLINE
             ),
             **kwargs):
         super().__init__(
@@ -64,10 +64,10 @@ class DocuscopeTaggerBase(Tagger):
         self.allow_overlapping_tags = allow_overlapping_tags
         self.wordclasses: dict[str, list[str]] = {}
 
-    def _get_ds_words_for_token(self, token, case_sensitive=False) -> list[str]:
+    def _get_ds_words_for_token(self, token: Token, case_sensitive:bool=False) -> list[str]:
         """ Get all the string representations of this token. """
         # Get all the str representations of this token.
-        token_strs = token[Tokenizer.INDEXES["STRS"]]
+        token_strs = token.STRS
         # Try to find a matching Docuscope token while we still have
         # token_strs to try with.
         ds_words = []
@@ -80,7 +80,7 @@ class DocuscopeTaggerBase(Tagger):
                 ds_words.extend(self.wordclasses[token_str])
         return ds_words
 
-    def _get_ds_words_for_token_index(self, token_index, case_sensitive=False) -> list[str]:
+    def _get_ds_words_for_token_index(self, token_index: int, case_sensitive: bool=False) -> list[str]:
         """ Get the string representations of the token at the index position. """
         try:
             token = self.tokens[token_index]
@@ -95,7 +95,7 @@ class DocuscopeTaggerBase(Tagger):
 
     def _get_long_rule_tag(self) -> tuple[Optional[TaggerRule], Optional[TaggerTag]]:
         # Is this token's type one that is excluded?
-        if self.tokens[self.token_index][Tokenizer.INDEXES["TYPE"]] in self.excluded_token_types:
+        if self.tokens[self.token_index].TYPE in self.excluded_token_types:
             # Early return, then.
             return None, None
         # Is there a next token?
@@ -120,10 +120,10 @@ class DocuscopeTaggerBase(Tagger):
                 rules=[(rule["full_name"], ds_rule["path"])],
                 index_start=self.token_index,
                 index_end=last_token_index,
-                pos_start=self.tokens[self.token_index][Tokenizer.INDEXES["POS"]],
-                pos_end=self.tokens[last_token_index][Tokenizer.INDEXES["POS"]],
+                pos_start=self.tokens[self.token_index].POS,
+                pos_end=self.tokens[last_token_index].POS,
                 len=tag["index_end"] - tag["index_start"] + 1,
-                token_end_len=self.tokens[last_token_index][Tokenizer.INDEXES["LENGTH"]],
+                token_end_len=self.tokens[last_token_index].LENGTH,
                 num_included_tokens=len(ds_rule["path"])
             )
         # Okay, do we have a valid tag and tag to return? (That's the best rule).
@@ -133,7 +133,7 @@ class DocuscopeTaggerBase(Tagger):
         # No long rule applies.
         return None, None
 
-    def _long_rule_applies_at_token_index(self, rule) -> bool:
+    def _long_rule_applies_at_token_index(self, rule: list[str]) -> bool:
         """ Check if rule applies at the current location. """
         try:
             # Get the next token index so that the first reassignment to
@@ -166,15 +166,15 @@ class DocuscopeTaggerBase(Tagger):
         tag.update(
             index_start=self.token_index,
             index_end=self.token_index,
-            pos_start=token[Tokenizer.INDEXES["POS"]],
-            pos_end=token[Tokenizer.INDEXES["POS"]],
+            pos_start=token.POS,
+            pos_end=token.POS,
             len=1,
             num_included_tokens=1,
-            token_end_len=token[Tokenizer.INDEXES["LENGTH"]]
+            token_end_len=token.LENGTH
         )
         # For words and punctuation...
         matching_ds_word = None
-        if token[Tokenizer.INDEXES["TYPE"]] not in self.excluded_token_types:
+        if token.TYPE not in self.excluded_token_types:
             # Try to find a short rule for one of this token's ds_words.
             lat, matching_ds_word = self.get_short_rule(token_ds_words)
             rule["name"] = lat
@@ -238,7 +238,7 @@ class DocuscopeTaggerBase(Tagger):
             if logging.getLogger(__name__).isEnabledFor(logging.DEBUG):
                 tag_token_strs = []
                 for token in self.tokens[tag["index_start"]:(tag["index_end"] + 1)]:
-                    tag_token_strs.append(token[Tokenizer.INDEXES["STRS"]][-1])
+                    tag_token_strs.append(token.STRS[-1])
                 logging.debug(">>> BEST RULE: %s for \"%s\"", rule["name"], str(tag_token_strs))
 
         # Compute the new token index.
@@ -251,10 +251,10 @@ class DocuscopeTaggerBase(Tagger):
         else:
             self.token_index = tag["index_end"] + 1
 
-    def tag(self, tokens) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
+    def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         # Several helper methods need access to the tokens.
         self.tokens = tokens
-        self.token_index = 0
+        self.token_index: int = 0
         # Loop through the tokens and tag them.
         while (self.token_index < len(self.tokens) and
                self.token_index is not None):

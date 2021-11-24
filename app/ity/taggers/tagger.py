@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 
 from pydantic.main import BaseModel
 from ..base import BaseClass
-from ..tokenizers.tokenizer import Tokenizer
+from ..tokenizers.tokenizer import Token, Tokenizer
 
 class TaggerRule(BaseModel):
     """Model for Tagger rules."""
@@ -196,7 +196,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     def __init__(
             self,
             label: Optional[str]=None,
-            excluded_token_types=(),
+            excluded_token_types: list[int]=(),
             case_sensitive: bool=True,
             untagged_rule_name: Optional[str]=None,
             no_rules_rule_name: Optional[str]=None,
@@ -210,29 +210,13 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         The Tagger constructor. Note the defaults---the Tagger base class is
         designed to return all "meta" rules and associated tags by default.
 
-        Make sure you call this in Tagger subclasses' __init__() methods using
-        Python's super() function::
-
-            super().__init__(
-                label=label,
-                excluded_token_types=excluded_token_types,
-                case_sensitive=case_sensitive,
-                untagged_rule_name=untagged_rule_name,
-                no_rules_rule_name=no_rules_rule_name,
-                excluded_rule_name=excluded_rule_name,
-                return_untagged_tags=return_untagged_tags,
-                return_no_rules_tags=return_no_rules_tags,
-                return_excluded_tags=return_excluded_tags,
-                return_included_tags=return_included_tags
-            )
-
         :param label: The label string identifying this module's return values.
         :type label: str
         :param excluded_token_types: Which token types, from
-                                     Ity.Tokenizers.Tokenizer.TYPES, to skip
+                                     Ity.Tokenizers.TokenType, to skip
                                      when tagging.
         :type excluded_token_types: tuple of ints, e.g.
-                                    (Tokenizer.TYPES["WHITESPACE"],)
+                                    (TokenType.WHITESPACE,)
         :param untagged_rule_name: The "meta" rule name to use for "untagged"
                                    tags, if they're being returned.
         :type untagged_rule_name: str
@@ -335,7 +319,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             excluded_meta_rule_names.append(self.excluded_rule_name)
         return excluded_meta_rule_names
 
-    def _should_return_rule(self, rule) -> bool:
+    def _should_return_rule(self, rule: TaggerRule) -> bool:
         """
         A convenient method to determine if self.tag() should return a
         particular rule (and its corresponding tag). It should return it if:
@@ -355,7 +339,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             )
         )
 
-    def _is_valid_rule(self, rule) -> bool:
+    def _is_valid_rule(self, rule: TaggerRule) -> bool:
         """
         A convenient method to validate a rule dict. Rule dicts must contain:
 
@@ -387,7 +371,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             rule["num_included_tokens"] >= 0
         )
 
-    def _is_valid_tag(self, tag) -> bool:
+    def _is_valid_tag(self, tag: TaggerTag) -> bool:
         """
         A convenient method to validate a tag dict. Tag dicts must contain:
 
@@ -418,8 +402,8 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
 
     def _get_nth_next_included_token_index(
             self,
-            starting_token_index=None,
-            offset=1) -> Optional[int]:
+            starting_token_index: Optional[int]=None,
+            offset: int=1) -> Optional[int]:
         """
         A helper method to get the index of the next token that is not an
         excluded token type, given a starting token index (or self.token_index).
@@ -443,7 +427,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             if next_token_index >= len(self.tokens):
                 break
             next_token = self.tokens[next_token_index]
-            if next_token[Tokenizer.INDEXES["TYPE"]] not in self.excluded_token_types:
+            if next_token.TYPE not in self.excluded_token_types:
                 offset -= 1
         # Did we actually get the nth next token index?
         if offset > 0:
@@ -451,7 +435,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         return next_token_index
 
     @abc.abstractmethod
-    def tag(self, tokens) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
+    def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         """
         An abstract method where all the tagging of the tokens list happens.
         It's recommended to assign the tokens argument to self.tokens

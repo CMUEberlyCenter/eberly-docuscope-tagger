@@ -3,8 +3,25 @@
 __author__ = 'kohlmannj'
 
 import abc
+from enum import Enum, unique
+from typing import Optional
+
+from pydantic.main import BaseModel
 from ..base import BaseClass
 
+# The possible token types.
+@unique
+class TokenType(Enum):
+    WORD = 0        # A "word" token, like, an actual English word
+    PUNCTUATION = 1 # A punctuation token, such as ";".
+    WHITESPACE = 2  # A whitespace token, i.e. a tab or space.
+    NEWLINE = 3     # A newline token, i.e. "\n".
+
+class Token(BaseModel):
+    STRS: list[str]
+    POS: int    # Starting byte position of this token in original string
+    LENGTH: int # byte length of this token in original string
+    TYPE: Optional[TokenType]
 
 class Tokenizer(BaseClass):
     """
@@ -16,7 +33,7 @@ class Tokenizer(BaseClass):
       transformed by the Tokenizer), the byte position at which the token
       starts in the original str, the length of the original token str capture,
       and the type of token, e.g. "word", "punctuation", "whitespace",
-      or "newline", as defined by an int value from the Tokenizer.TYPES dict.
+      or "newline", as defined by an int value from the TokenType enum.
 
     Token List Indexes
     ------------------
@@ -28,18 +45,18 @@ class Tokenizer(BaseClass):
                                 original str capture in the original str.
     * Tokenizer.INDEXES["LENGTH"]: The byte length of this token's original
                                    str capture.
-    * Tokenizer.INDEXES["TYPE"]: The type of this token, from Tokenizer.TYPES.
+    * Tokenizer.INDEXES["TYPE"]: The type of this token, from TokenType.
 
     Token Types
     -----------
 
     Use Tokenizer.TYPES to indicate a token's type:
 
-    * Tokenizer.TYPES["WORD"]: A "word" token, like, an actual English word
+    * TokenType.WORD: A "word" token, like, an actual English word
                                (or number, I guess).
-    * Tokenizer.TYPES["PUNCTUATION"]: A punctuation token, such as ";".
-    * Tokenizer.TYPES["WHITESPACE"]: A whitespace token, i.e. a tab or space.
-    * Tokenizer.TYPES["NEWLINE"]: A newline token, i.e. "\n".
+    * TokenType.PUNCTUATION: A punctuation token, such as ";".
+    * TokenType.WHITESPACE: A whitespace token, i.e. a tab or space.
+    * TokenType.NEWLINE: A newline token, i.e. "\n".
 
     Note that RegexTokenizer, the "default" Tokenizer implementation, captures
     congiguous repetitions of "punctuation", "whitespace", and "newline" chars
@@ -111,18 +128,17 @@ class Tokenizer(BaseClass):
     """
     #__metaclass__ = abc.ABCMeta
 
-    # The possible token types.
-    TYPES = dict(WORD=0, PUNCTUATION=1, WHITESPACE=2, NEWLINE=3)
+    #TYPES = dict(WORD=0, PUNCTUATION=1, WHITESPACE=2, NEWLINE=3)
 
     # The indexes of data in a "token list".
-    INDEXES = dict(STRS=0, POS=1, LENGTH=2, TYPE=3)
+    #INDEXES = dict(STRS=0, POS=1, LENGTH=2, TYPE=3)
 
     def __init__(
             self,
-            label=None,
-            excluded_token_types=(),
-            case_sensitive=True,
-            preserve_original_strs=False
+            label: Optional[str]=None,
+            excluded_token_types: list[TokenType]=(),
+            case_sensitive: bool=True,
+            preserve_original_strs: bool=False
     ):
         """
         The Tokenizer constructor. Make sure you call this in Tokenizer
@@ -141,7 +157,7 @@ class Tokenizer(BaseClass):
                                      Ity.Tokenizers.Tokenizer.TYPES, to skip
                                      when tagging.
         :type excluded_token_types: tuple of ints, e.g.
-                                    (Tokenizer.TYPES["WHITESPACE"],)
+                                    (Tokenizer.TYPES.WHITESPACE,)
         :param case_sensitive: Whether or not to preserve case when tokenizing.
                                (If self.preserve_original_strs is True, the
                                original case-sensitive capture should also be
@@ -162,7 +178,7 @@ class Tokenizer(BaseClass):
         self.preserve_original_strs = preserve_original_strs
 
     @classmethod
-    def validate_excluded_token_types(cls, excluded_token_types):
+    def validate_excluded_token_types(cls, excluded_token_types: list[TokenType]):
         """
         A helper method to determine if a tuple or list of excluded token types
         (i.e. ints) is valid. The tuple or list is valid if:
@@ -176,23 +192,23 @@ class Tokenizer(BaseClass):
                                      Ity.Tokenizers.Tokenizer.TYPES, to skip
                                      when tagging.
         :type excluded_token_types: tuple of ints, e.g.
-                                    (Tokenizer.TYPES["WHITESPACE"],)
+                                    (Tokenizer.TYPES.WHITESPACE,)
         :return: None
         """
         num_valid_excluded_token_types = 0
         # Make sure the excluded token types are all valid types.
         for token_type in excluded_token_types:
-            if token_type not in cls.TYPES.values():
+            if not isinstance(token_type, TokenType):
                 raise ValueError(f"Attempting to exclude an invalid token type "
                                  f"({token_type}).")
             num_valid_excluded_token_types += 1
         # Are we going to ignore *every* token type or something?
         # That's, uh, not very useful.
-        if num_valid_excluded_token_types >= len(cls.TYPES.keys()):
+        if num_valid_excluded_token_types >= len(TokenType):
             raise ValueError("Attempting to exclude all (or more) possible token types.")
 
     @abc.abstractmethod
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list[Token]:
         """
         An abstract method where all the tokenizing happens. Returns a list of
         "token lists", which represents all the tokens captured from the input

@@ -5,7 +5,7 @@ __author__ = 'kohlmannj'
 import re
 from html import unescape
 from typing import Optional
-from .tokenizer import Tokenizer
+from .tokenizer import Token, TokenType, Tokenizer
 
 
 class RegexTokenizer(Tokenizer):
@@ -21,11 +21,11 @@ class RegexTokenizer(Tokenizer):
     * "Entities", or strings that each represent a single encoded HTML entity.
       These can sneak into plain text files due to processing errors. There is
       also a flag (convert_entities) that changes them back to the appropriate
-      Unicode character/s. Tokenized as type Tokenizer.TYPES["PUNCTUATION"].
+      Unicode character/s. Tokenized as type Tokenizer.TYPES.PUNCTUATION.
     * "Remnants", which captures potentially repeated characters not captured
       by the "coalesced word fragments" regular expression. This means that
       "--" (two consecutive hyphens) is captured as one token, for example.
-      Tokenized as type Tokenizer.TYPES["PUNCTUATION"].
+      Tokenized as type Tokenizer.TYPES.PUNCTUATION.
     * "Whitespace", which captures non-newline whitespace characters. Again,
       coalescing occurs, so "\t\t\t" or "    " (four spaces) are both captured
       as single tokens (independently of each other, of course).
@@ -302,7 +302,7 @@ class RegexTokenizer(Tokenizer):
         # sure re.VERBOSE is one of the flags used!
         self.tokenize_pattern = re.compile(final_tokenize_pattern_str, re.I | re.VERBOSE)
 
-    def _format_token_entity(self, _m, token_data):
+    def _format_token_entity(self, _m, token_data: Token):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing an HTML entity. Most of the time we want to convert
@@ -317,10 +317,10 @@ class RegexTokenizer(Tokenizer):
         """
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data[self.INDEXES["STRS"]]
+        token_strs = token_data.STRS
 
         # Set the token type in token_data.
-        token_data[self.INDEXES["TYPE"]] = self.TYPES["PUNCTUATION"]
+        token_data.TYPE = TokenType.PUNCTUATION
 
         # Make sure we have an HTMLParser instance before continuing.
         if self.convert_entities: # if self.html_parser is not None:
@@ -335,7 +335,7 @@ class RegexTokenizer(Tokenizer):
                 # Replace the token_str instead.
                 token_strs[0] = converted_token_str
 
-    def _format_token_word(self, match, token_data):
+    def _format_token_word(self, match, token_data: Token):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing words. We may want to convert HTML entities found in
@@ -359,10 +359,10 @@ class RegexTokenizer(Tokenizer):
 
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data[self.INDEXES["STRS"]]
+        token_strs = token_data.STRS
 
         # Set the token type in token_data.
-        token_data[self.INDEXES["TYPE"]] = self.TYPES["WORD"]
+        token_data.TYPE = TokenType.WORD
 
         # Case-Insensitivity
         # Transform the word to lowercase if we're supposed to.
@@ -408,7 +408,7 @@ class RegexTokenizer(Tokenizer):
                 # How did we match this group? We didn't even look for it.
                 raise ValueError("Somehow found a hyphen_break group when we shouldn't have.")
 
-    def _format_token_whitespace(self, _m, token_data):
+    def _format_token_whitespace(self, _m, token_data: Token):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing whitespace. We may want to "condense" a token
@@ -423,10 +423,10 @@ class RegexTokenizer(Tokenizer):
         """
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data[self.INDEXES["STRS"]]
+        token_strs = token_data.STRS
 
         # Set the token type in token_data.
-        token_data[self.INDEXES["TYPE"]] = self.TYPES["WHITESPACE"]
+        token_data.TYPE = TokenType.WHITESPACE
 
         # Should we condense this whitespace token (and is this token
         # different than the string we're going to condense it to)?
@@ -439,7 +439,7 @@ class RegexTokenizer(Tokenizer):
             else:
                 token_strs[0] = self.condense_whitespace
 
-    def _format_token_newline(self, _m, token_data):
+    def _format_token_newline(self, _m, token_data: Token):
         """
         Modifies the contents of token_data according to how we want to handle
         a token containing newlines. We may want to "condense" a token
@@ -455,10 +455,10 @@ class RegexTokenizer(Tokenizer):
         # for token_list in token_lists:
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data[self.INDEXES["STRS"]]
+        token_strs = token_data.STRS
 
         # Set the token type in token_data.
-        token_data[self.INDEXES["TYPE"]] = self.TYPES["NEWLINE"]
+        token_data.TYPE = TokenType.NEWLINE
 
         # Should we convert newlines? We'll try to be smart about condensing
         # \r\n into a single newline. Don't do this if the token string is
@@ -484,7 +484,7 @@ class RegexTokenizer(Tokenizer):
                 token_strs[0] = self.condense_newlines
                 # No other special behavior for newline tokens.
 
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list[Token]:
         """
         Returns a list of lists representing all the tokens captured from the
         input string, text.
@@ -539,10 +539,11 @@ class RegexTokenizer(Tokenizer):
             # capture. Also note that single_token_list[3] (an integer indicating
             # the token type, e.g. self.TYPES.index("WORD") will be added
             # by one of the self._format_token_*() helper methods.
-            single_token_list = [None] * len(self.INDEXES.keys())
-            single_token_list[self.INDEXES["STRS"]] = [tokens_str]
-            single_token_list[self.INDEXES["POS"]] = start
-            single_token_list[self.INDEXES["LENGTH"]] = length
+            single_token_list = Token(
+                STRS = [tokens_str],
+                POS = start,
+                LENGTH = length,
+                TYPE = None)
 
             # Potentially omit certain types of tokens.
             # The technique used to identify token type: if the entire group
@@ -553,25 +554,25 @@ class RegexTokenizer(Tokenizer):
 
             # Words
             if (match.group("word") is not None and
-                    Tokenizer.TYPES["WORD"] not in self.excluded_token_types):
+                    TokenType.WORD not in self.excluded_token_types):
                 self._format_token_word(match, single_token_list)
             # Entities (Punctuation)
             elif (match.group("entity") is not None and
-                  Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types):
+                  TokenType.PUNCTUATION not in self.excluded_token_types):
                 self._format_token_entity(match, single_token_list)
             # Remnants (Punctuation)
             elif (match.group("remnant") is not None and
-                  Tokenizer.TYPES["PUNCTUATION"] not in self.excluded_token_types):
+                  TokenType.PUNCTUATION not in self.excluded_token_types):
                 # No special behavior for remnant tokens, aside from indicating
                 # that they are punctuation tokens.
-                single_token_list[self.INDEXES["TYPE"]] = self.TYPES["PUNCTUATION"]
+                single_token_list.TYPE = TokenType.PUNCTUATION
             # Whitespace
             elif (match.group("whitespace") is not None and
-                  Tokenizer.TYPES["WHITESPACE"] not in self.excluded_token_types):
+                  TokenType.WHITESPACE not in self.excluded_token_types):
                 self._format_token_whitespace(match, single_token_list)
             # Newlines
             elif (match.group("newline") is not None and
-                  Tokenizer.TYPES["NEWLINE"] not in self.excluded_token_types):
+                  TokenType.NEWLINE not in self.excluded_token_types):
                 self._format_token_newline(match, single_token_list)
             # We made it to this condition, which means we should NOT add this
             # token to the tokens list. Therefore, `continue`.

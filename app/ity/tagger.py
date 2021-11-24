@@ -3,19 +3,22 @@ from collections import Counter
 import re
 
 from default_settings import Config
-from .tokenizers.regex_tokenizer import RegexTokenizer
+from .formatters.formatter import Formatter
 from .formatters.simple_html_formatter import SimpleHTMLFormatter
+from .tokenizers.regex_tokenizer import RegexTokenizer
+from .tokenizers.tokenizer import TokenType, Tokenizer
+from .taggers.tagger import Tagger
 from .taggers.docuscope_tagger import DocuscopeTagger
 from .taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
 
 class ItyTagger():
     """ Base tagger class for tagging a string. """
-    def __init__(self, tagger, formatter=None, tokenizer=None, tagger_type="DocuscopeTagger"):
+    def __init__(self, tagger: Tagger, formatter:Formatter=None, tokenizer:Tokenizer=None, tagger_type:str="DocuscopeTagger"):
         self.tagger = tagger
         self.formatter = formatter or SimpleHTMLFormatter()
         self.tokenizer = tokenizer or RegexTokenizer()
         self.tagger_type = tagger_type or "DocuscopeTagger"
-    def tag_string(self, string):
+    def tag_string(self, string: str):
         """Tags a string."""
         tokens = self.tokenizer.tokenize(string)
         tag_dict, tag_map = self.tagger.tag(tokens)
@@ -26,19 +29,19 @@ class ItyTagger():
             'num_tokens': len(tokens),
             'num_word_tokens': len([
                 token for token in tokens
-                if token[RegexTokenizer.INDEXES["TYPE"]] == RegexTokenizer.TYPES["WORD"]
+                if token.TYPE == TokenType.WORD
             ]),
             'num_punctuation_tokens': len([
                 token for token in tokens
-                if token[RegexTokenizer.INDEXES["TYPE"]] == RegexTokenizer.TYPES["PUNCTUATION"]
+                if token.TYPE == TokenType.PUNCTUATION
             ]),
             'num_included_tokens': len([
                 token for token in tokens
-                if token[RegexTokenizer.INDEXES["TYPE"]] not in self.tokenizer.excluded_token_types
+                if token.TYPE not in self.tokenizer.excluded_token_types
             ]),
             'num_excluded_tokens': len([
                 token for token in tokens
-                if token[RegexTokenizer.INDEXES["TYPE"]] in self.tokenizer.excluded_token_types
+                if token.TYPE in self.tokenizer.excluded_token_types
             ])
         }
         output_dict['tag_chain'] = [tag['rules'][0][0].split('.')[-1] for tag in tag_map]

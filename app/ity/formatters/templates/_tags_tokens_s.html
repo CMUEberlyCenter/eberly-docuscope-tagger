@@ -35,12 +35,12 @@
 
         {# Output tagged tokens mapped to this tag. #}
         {% for token in tokens[tag.index_start:tag.index_end + 1] %}
-            {% if token[token_type_index] == token_types["WHITESPACE"] or token[token_type_index] == token_types["NEWLINE"] %}
-                {% set token_str = token[token_strs_index][token_whitespace_newline_str_to_output_index] %}
+            {% if token["TYPE"] == token_types["WHITESPACE"] or token["TYPE"] == token_types["NEWLINE"] %}
+                {% set token_str = token.STRS[token_whitespace_newline_str_to_output_index] %}
             {% else %}
-                {% set token_str = token[token_strs_index][token_str_to_output_index] %}
+                {% set token_str = token.STRS[token_str_to_output_index] %}
             {% endif %}
-            <span id="{{ token[1] }}" class="token">{{ token_str }}</span>
+            <span id="{{ token.POS }}" class="token">{{ token_str }}</span>
         {% endfor %}
 
         {# Begin tag closing wrapper #}
