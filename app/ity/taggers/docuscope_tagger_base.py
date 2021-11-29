@@ -6,14 +6,14 @@ import logging
 from typing import Optional
 from pydantic import BaseModel
 
-from ..tokenizers.tokenizer import Token, TokenType, Tokenizer
-from .tagger import Tagger, TaggerRule, TaggerTag, generate_empty_rule, generate_empty_tag
+from ..tokenizers.tokenizer import Token, TokenType
+from .tagger import Tagger, TaggerRule, TaggerTag
 
 class LatRule(BaseModel):
     """Model for LAT rules."""
     #pylint: disable=too-few-public-methods
-    lat: str
-    path: list[str]
+    lat: str # The LAT id
+    path: list[str] # The list of strings that make up the rule pattern.
 
 class DocuscopeTaggerBase(Tagger):
     """
@@ -51,36 +51,40 @@ class DocuscopeTaggerBase(Tagger):
     def __init__(
             self,
             *args,
-            allow_overlapping_tags: bool=False,
+            allow_overlapping_tags: bool = False,
             excluded_token_types=(
                 TokenType.WHITESPACE,
                 TokenType.NEWLINE
             ),
             **kwargs):
         super().__init__(
-            excluded_token_types=excluded_token_types,
+            excluded_token_types = excluded_token_types,
             *args, **kwargs)
         # This is a weird setting
         self.allow_overlapping_tags = allow_overlapping_tags
         self.wordclasses: dict[str, list[str]] = {}
 
-    def _get_ds_words_for_token(self, token: Token, case_sensitive:bool=False) -> list[str]:
+    def _get_ds_words_for_token(self, token: Token, case_sensitive: bool = False) -> list[str]:
         """ Get all the string representations of this token. """
         # Get all the str representations of this token.
-        token_strs = token.STRS
+        token_strs = token.strings
         # Try to find a matching Docuscope token while we still have
         # token_strs to try with.
         ds_words = []
+        # As the various token strings should be equivalent, only one should grabbed
+        # Also, there should only be a single match.
         for token_str in token_strs:
             if not case_sensitive:
                 token_str = token_str.lower()
             # UnicodeWarning previously happened here when this was a try / KeyError block
             if token_str in self.wordclasses:
-                # FIXME: should this accumulate?
-                ds_words.extend(self.wordclasses[token_str])
+                # This should not accumulate.
+                # Last match should be best as it would be closest to original text.
+                ds_words = self.wordclasses[token_str]
         return ds_words
 
-    def _get_ds_words_for_token_index(self, token_index: int, case_sensitive: bool=False) -> list[str]:
+    def _get_ds_words_for_token_index(
+            self, token_index: int, case_sensitive: bool = False) -> list[str]:
         """ Get the string representations of the token at the index position. """
         try:
             token = self.tokens[token_index]
@@ -95,7 +99,7 @@ class DocuscopeTaggerBase(Tagger):
 
     def _get_long_rule_tag(self) -> tuple[Optional[TaggerRule], Optional[TaggerTag]]:
         # Is this token's type one that is excluded?
-        if self.tokens[self.token_index].TYPE in self.excluded_token_types:
+        if self.tokens[self.token_index].type in self.excluded_token_types:
             # Early return, then.
             return None, None
         # Is there a next token?
@@ -109,23 +113,21 @@ class DocuscopeTaggerBase(Tagger):
 
         ds_rule = self.get_long_rule()
 
-        rule = generate_empty_rule()
-        tag = generate_empty_tag()
+        rule = TaggerRule()
+        tag = TaggerTag()
         if ds_rule is not None:
-            rule["name"] = ds_rule["lat"]
-            rule["full_name"] = ".".join([self.full_label, rule["name"]])
+            rule.name = ds_rule.lat
+            rule.full_name = ".".join([self.full_label, rule.name])
             last_token_index = self._get_nth_next_included_token_index(
-                offset=len(ds_rule["path"]) - 1)
-            tag.update(
-                rules=[(rule["full_name"], ds_rule["path"])],
-                index_start=self.token_index,
-                index_end=last_token_index,
-                pos_start=self.tokens[self.token_index].POS,
-                pos_end=self.tokens[last_token_index].POS,
-                len=tag["index_end"] - tag["index_start"] + 1,
-                token_end_len=self.tokens[last_token_index].LENGTH,
-                num_included_tokens=len(ds_rule["path"])
-            )
+                offset=len(ds_rule.path) - 1)
+            tag.rules=[(rule.full_name, ds_rule.path)]
+            tag.index_start=self.token_index
+            tag.index_end=last_token_index
+            tag.pos_start=self.tokens[self.token_index].position
+            tag.pos_end=self.tokens[last_token_index].position
+            tag.len=tag.index_end - tag.index_start + 1
+            tag.token_end_len=self.tokens[last_token_index].length
+            tag.num_included_tokens=len(ds_rule.path)
         # Okay, do we have a valid tag and tag to return? (That's the best rule).
         if self._is_valid_rule(rule) and self._is_valid_tag(tag):
             # Return the best rule's rule and tag.
@@ -157,49 +159,47 @@ class DocuscopeTaggerBase(Tagger):
 
     def _get_short_rule_tag(self) -> tuple[TaggerRule, TaggerTag]:
         """ Get an applicable unigram rule. """
-        rule = generate_empty_rule()
+        rule = TaggerRule()
         # Some data for the current token.
         token = self.tokens[self.token_index]
         token_ds_words = self._get_ds_words_for_token(token)
         # Update some information in tag right away for this one-token tag.
-        tag = generate_empty_tag()
-        tag.update(
-            index_start=self.token_index,
-            index_end=self.token_index,
-            pos_start=token.POS,
-            pos_end=token.POS,
-            len=1,
-            num_included_tokens=1,
-            token_end_len=token.LENGTH
-        )
+        tag = TaggerTag()
+        tag.index_start = self.token_index
+        tag.index_end = self.token_index
+        tag.pos_start = token.position
+        tag.pos_end = token.position
+        tag.len = 1
+        tag.num_included_tokens = 1
+        tag.token_end_len = token.length
         # For words and punctuation...
         matching_ds_word = None
-        if token.TYPE not in self.excluded_token_types:
+        if token.type not in self.excluded_token_types:
             # Try to find a short rule for one of this token's ds_words.
             lat, matching_ds_word = self.get_short_rule(token_ds_words)
-            rule["name"] = lat
+            rule.name = lat
             # Handle "no rule" included tokens (words and punctuation that
             # exist in the Docuscope dictionary's words dict but do not have
             # an applicable rule).
-            if rule["name"] is None:
+            if rule.name is None:
                 for ds_word in token_ds_words:
                     if ds_word in self.wordclasses:
-                        rule["name"] = self.no_rules_rule_name
+                        rule.name = self.no_rules_rule_name
                         break
             # Still don't have a rule?
             # Handle "untagged" tokens---tokens that do not exist in the dictionary.
-            if rule["name"] is None:
-                rule["name"] = self.untagged_rule_name
+            if rule.name is None:
+                rule.name = self.untagged_rule_name
         # For excluded token types...uh, they're excluded.
         else:
-            rule["name"] = self.excluded_rule_name
+            rule.name = self.excluded_rule_name
         # For all cases, we should have a rule "name" by now.
         # Update the rule's full_name value and append a rule tuple to the
         # tag's "rules" list.
-        if "name" in rule and isinstance(rule["name"], str):
-            rule["full_name"] = ".".join([self.full_label, rule["name"]])
-            rule_tuple = (rule["full_name"], matching_ds_word)
-            tag["rules"].append(rule_tuple)
+        if rule.name is not None:
+            rule.full_name = f"{self.full_label}.{rule.name}"
+            rule_tuple = (rule.full_name, matching_ds_word)
+            tag.rules.append(rule_tuple)
         # self._get_tag() will validate the returned rule and tag.
         return rule, tag
 
@@ -216,7 +216,7 @@ class DocuscopeTaggerBase(Tagger):
             rule, tag = self._get_short_rule_tag()
         # We should absolutely have a valid rule and tag at this point.
         if not self._is_valid_rule(rule) or not self._is_valid_tag(tag):
-            raise ValueError(f"Unexpected None, None return value/s from "
+            raise ValueError(f"Unexpected None, None return values from "
                              f"self._get_short_rule_tag(). Can't tag token "
                              f"'{self.tokens[self.token_index]}' "
                              f"at index {self.token_index}.")
@@ -224,32 +224,32 @@ class DocuscopeTaggerBase(Tagger):
         # self.tags.
         if self._should_return_rule(rule):
             # Is this the first time we've seen this rule?
-            if rule["full_name"] not in self.rules:
-                rule["num_tags"] = 1
-                rule["num_included_tokens"] = tag["num_included_tokens"]
-                self.rules[rule["full_name"]] = rule
+            if rule.full_name not in self.rules:
+                rule.num_tags = 1
+                rule.num_included_tokens = tag.num_included_tokens
+                self.rules[rule.full_name] = rule
             # We've seen this rule already, but update its num_tags count.
             else:
-                self.rules[rule["full_name"]]["num_tags"] += 1
-                self.rules[rule["full_name"]]["num_included_tokens"] += tag["num_included_tokens"]
+                self.rules[rule.full_name].num_tags += 1
+                self.rules[rule.full_name].num_included_tokens += tag.num_included_tokens
             # Append the tag to self.tags.
             self.tags.append(tag)
             # Debug: print the tokens that have been tagged.
             if logging.getLogger(__name__).isEnabledFor(logging.DEBUG):
                 tag_token_strs = []
-                for token in self.tokens[tag["index_start"]:(tag["index_end"] + 1)]:
-                    tag_token_strs.append(token.STRS[-1])
-                logging.debug(">>> BEST RULE: %s for \"%s\"", rule["name"], str(tag_token_strs))
+                for token in self.tokens[tag.index_start:(tag.index_end + 1)]:
+                    tag_token_strs.append(token.strings[-1])
+                logging.debug(">>> BEST RULE: %s for \"%s\"", rule.name, str(tag_token_strs))
 
         # Compute the new token index.
         # If "overlapping tags" are allowed, start at the token following
         # the **first** token in the tag we just finished making.
         if self.allow_overlapping_tags:
-            self.token_index = tag["index_start"] + 1
+            self.token_index = tag.index_start + 1
         # Otherwise, start at the token following the **last** token in the
         # tag we just finished making.
         else:
-            self.token_index = tag["index_end"] + 1
+            self.token_index = tag.index_end + 1
 
     def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         # Several helper methods need access to the tokens.

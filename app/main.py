@@ -14,7 +14,6 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 #from starlette.middeware.cors import CORSMiddleware
-import uvicorn
 
 from default_settings import Config
 from ds_tagger import get_wordclasses
@@ -99,7 +98,7 @@ def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session) -> None:
             # Should no longer need as shared prepopulated tagger.
             tagger = neo_tagger(WORDCLASSES, neo)
             processed = tagger.tag(doc_content)
-            if processed.get('ds_num_word_tokens', 0) == 0:
+            if processed.ds_num_word_tokens == 0:
                 state = 'error'
                 processed['error'] = 'Document failed to parse: no word tokens found.'
                 logging.error("Invalid parsing results %s: no word tokens.", doc_id)
@@ -207,19 +206,19 @@ def check_tagging(doc_id: UUID, sql: Session, neo: neo4j.Session) -> CheckResult
         # tag document
         tagger = neo_tagger(WORDCLASSES, neo)
         processed = tagger.tag(docx_to_text(doc_content))
-        tag_diff = diff(doc_processed, processed)
+        tag_diff = diff(doc_processed, processed.dict())
         if tag_diff:
             logging.warning("diff: %s", tag_diff)
-        if doc_processed['ds_output'] != processed['ds_output']:
+        if doc_processed['ds_output'] != processed.ds_output:
             logging.warning(''.join(ndiff(
                 "</span>\n".join(
                     doc_processed['ds_output'].split('</span>')).splitlines(keepends=True),
                 "</span>\n".join(
-                    processed['ds_output'].split("</span>")).splitlines(keepends=True))))
+                    processed.ds_output.split("</span>")).splitlines(keepends=True))))
         return {
-            "output_check": doc_processed['ds_output'] == processed['ds_output'],
-            "token_check": doc_processed['ds_num_tokens'] == processed['ds_num_tokens'],
-            "tag_dict_check": len(doc_processed['ds_tag_dict']) - len(processed['ds_tag_dict']),
+            "output_check": doc_processed['ds_output'] == processed.ds_output,
+            "token_check": doc_processed['ds_num_tokens'] == processed.ds_num_tokens,
+            "tag_dict_check": len(doc_processed['ds_tag_dict']) - len(processed.ds_tag_dict),
             #"tag_count": str(diff(doc_processed['ds_count_dict'], processed['ds_count_dict']))
         }
     logging.error("No document content for %s.", doc_id)
@@ -227,4 +226,6 @@ def check_tagging(doc_id: UUID, sql: Session, neo: neo4j.Session) -> CheckResult
                         status_code=status.HTTP_404_NOT_FOUND)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

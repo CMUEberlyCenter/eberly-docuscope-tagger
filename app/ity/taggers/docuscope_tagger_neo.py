@@ -16,8 +16,8 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
 
     def __init__(
             self, *args,
-            wordclasses: Optional[dict[str, list[str]]]=None,
-            session: Optional[neo4j.Session]=None,
+            wordclasses: Optional[dict[str, list[str]]] = None,
+            session: Optional[neo4j.Session] = None,
             **kwargs):
         super().__init__(*args, **kwargs)
         self.session = session
@@ -39,9 +39,8 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
             if fourth_token_index else []
         rules = self.session.read_transaction(
             get_lat_rules, first_tokens, second_tokens, third_tokens, fourth_tokens)
-        #rules.sort(reverse=True, key=lambda p: len(p["path"]))
         ds_rule = next((r for r in rules \
-            if self._long_rule_applies_at_token_index(r['path'])), None)
+            if self._long_rule_applies_at_token_index(r.path)), None)
         return ds_rule
 
     def get_short_rule(self, token_ds_words):
@@ -52,7 +51,8 @@ def get_lat_rules(
         trx: Transaction,
         first_tokens: tuple[str],
         second_tokens: tuple[str],
-        third_tokens: tuple[str], fourth_tokens: tuple[str]) -> list[LatRule]:
+        third_tokens: tuple[str],
+        fourth_tokens: tuple[str]) -> list[LatRule]:
     """ Retrieve the LAT rules starting with the given bi-/tri-gram. """
     hsh = ",".join([*first_tokens, SEPARATOR, *second_tokens,
                     SEPARATOR, *third_tokens, SEPARATOR, *fourth_tokens])
@@ -93,12 +93,12 @@ def get_lat_rules(
                 "l.lat as lat ", # ORDER BY length(p) DESC "
                 first=first_tokens, second=second_tokens)
         # duck type NEXT as type is not in record properties.
-        res = [{"lat": record["lat"],
-                "path": [record["start"],
-                         *[path["word"] for path in record["path"]
-                           if "word" in path]]}
+        res = [LatRule(lat = record["lat"],
+                       path = [record["start"],
+                               *[path["word"] for path in record["path"]
+                                 if "word" in path]])
                for record in result]
-        res.sort(reverse=True, key=lambda p: len(p["path"])) # python faster on sort
+        res.sort(reverse=True, key=lambda p: len(p.path)) # python faster on sort
         CACHE.put(hsh, res)
     return res
 

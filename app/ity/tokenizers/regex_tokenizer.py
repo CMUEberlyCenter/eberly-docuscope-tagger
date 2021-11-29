@@ -21,11 +21,11 @@ class RegexTokenizer(Tokenizer):
     * "Entities", or strings that each represent a single encoded HTML entity.
       These can sneak into plain text files due to processing errors. There is
       also a flag (convert_entities) that changes them back to the appropriate
-      Unicode character/s. Tokenized as type Tokenizer.TYPES.PUNCTUATION.
+      Unicode character/s. Tokenized as type TokenType.PUNCTUATION.
     * "Remnants", which captures potentially repeated characters not captured
       by the "coalesced word fragments" regular expression. This means that
       "--" (two consecutive hyphens) is captured as one token, for example.
-      Tokenized as type Tokenizer.TYPES.PUNCTUATION.
+      Tokenized as type TokenType.PUNCTUATION.
     * "Whitespace", which captures non-newline whitespace characters. Again,
       coalescing occurs, so "\t\t\t" or "    " (four spaces) are both captured
       as single tokens (independently of each other, of course).
@@ -200,8 +200,7 @@ class RegexTokenizer(Tokenizer):
 
         Keyword arguments:
         excluded_token_types-- A tuple of token type integers to exclude from
-                               the tokenizer's output. Refer to Tokenizer.TYPES
-                               for a dict of valid TYPE integers.
+                               the tokenizer's output. Refer to TokenType.
                                (default ())
         case_sensitive      -- Whether or not the tokens from self.tokenize() or
                                self.batch_tokenize() are case-sensitive.
@@ -317,10 +316,10 @@ class RegexTokenizer(Tokenizer):
         """
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data.STRS
+        token_strs = token_data.strings
 
         # Set the token type in token_data.
-        token_data.TYPE = TokenType.PUNCTUATION
+        token_data.type = TokenType.PUNCTUATION
 
         # Make sure we have an HTMLParser instance before continuing.
         if self.convert_entities: # if self.html_parser is not None:
@@ -359,10 +358,10 @@ class RegexTokenizer(Tokenizer):
 
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data.STRS
+        token_strs = token_data.strings
 
         # Set the token type in token_data.
-        token_data.TYPE = TokenType.WORD
+        token_data.type = TokenType.WORD
 
         # Case-Insensitivity
         # Transform the word to lowercase if we're supposed to.
@@ -423,10 +422,10 @@ class RegexTokenizer(Tokenizer):
         """
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data.STRS
+        token_strs = token_data.strings
 
         # Set the token type in token_data.
-        token_data.TYPE = TokenType.WHITESPACE
+        token_data.type = TokenType.WHITESPACE
 
         # Should we condense this whitespace token (and is this token
         # different than the string we're going to condense it to)?
@@ -455,10 +454,10 @@ class RegexTokenizer(Tokenizer):
         # for token_list in token_lists:
         # Convenience variable.
         # ALWAYS use token_strs[0] to modify the current "preferred" token str!
-        token_strs = token_data.STRS
+        token_strs = token_data.strings
 
         # Set the token type in token_data.
-        token_data.TYPE = TokenType.NEWLINE
+        token_data.type = TokenType.NEWLINE
 
         # Should we convert newlines? We'll try to be smart about condensing
         # \r\n into a single newline. Don't do this if the token string is
@@ -486,24 +485,10 @@ class RegexTokenizer(Tokenizer):
 
     def tokenize(self, text: str) -> list[Token]:
         """
-        Returns a list of lists representing all the tokens captured from the
+        Returns a list of Tokens representing all the tokens captured from the
         input string, text.
 
         The data structure returned looks like this:
-
-        # List of All Tokens
-        [
-            # List of Data for an Individual Token
-            [
-                # List of token strings, with the preferred string always at
-                # index 0 and the original string always at index -1.
-                [preferred_token_str, [...], original_token_str],  # token[0]
-                original_token_start_position,                     # token[1]
-                original_token_str_length,                         # token[2]
-                # An integer from self.TYPES.
-                token_type                                         # token[3]
-            ]
-        ]
 
         Note that self.batch_tokenize() is not implemented here; the Tokenizer
         superclass will call this subclass's implementation of self.tokenize()
@@ -537,13 +522,13 @@ class RegexTokenizer(Tokenizer):
             # "preferred" str representation of this token. single_token_list[0][-1]
             # (the last item in the list) always contains the original str
             # capture. Also note that single_token_list[3] (an integer indicating
-            # the token type, e.g. self.TYPES.index("WORD") will be added
+            # the token type, e.g. TokenType.WORD) will be added
             # by one of the self._format_token_*() helper methods.
             single_token_list = Token(
-                STRS = [tokens_str],
-                POS = start,
-                LENGTH = length,
-                TYPE = None)
+                strings = [tokens_str],
+                position = start,
+                length = length,
+                type = None)
 
             # Potentially omit certain types of tokens.
             # The technique used to identify token type: if the entire group
@@ -565,7 +550,7 @@ class RegexTokenizer(Tokenizer):
                   TokenType.PUNCTUATION not in self.excluded_token_types):
                 # No special behavior for remnant tokens, aside from indicating
                 # that they are punctuation tokens.
-                single_token_list.TYPE = TokenType.PUNCTUATION
+                single_token_list.type = TokenType.PUNCTUATION
             # Whitespace
             elif (match.group("whitespace") is not None and
                   TokenType.WHITESPACE not in self.excluded_token_types):

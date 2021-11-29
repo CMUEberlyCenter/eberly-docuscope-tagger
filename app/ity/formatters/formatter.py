@@ -4,6 +4,9 @@ __author__ = 'kohlmannj'
 
 import abc
 from typing import Optional
+
+from ..taggers.tagger import TaggerRule, TaggerTag
+from ..tokenizers.tokenizer import Token
 from ..base import BaseClass
 
 
@@ -69,10 +72,8 @@ class Formatter(BaseClass):
     @abc.abstractmethod
     def format(
             self,
-            #output_path=None, #unused
-            #rules=None, #unused
-            tags=None,
-            tokens=None,
-            text_str=None):
+            tags: Optional[tuple[dict[str, TaggerRule], list[TaggerTag]]] = None,
+            tokens: Optional[list[Token]] = None,
+            text_str: Optional[str] = None) -> str:
         """ Compose output. """
-        return
+        return ""

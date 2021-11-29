@@ -16,15 +16,15 @@
     {# We have untagged tokens, so let's output 'em. #}
     {% for token_index in range(untagged_tokens_index_start, untagged_tokens_index_end + 1) %}
         {% set token = tokens[token_index] %}
-        {% if token.TYPE == token_types["WHITESPACE"] or token.TYPE == token_types["NEWLINE"] %}
-            {% set token_str = token.STRS[token_whitespace_newline_str_to_output_index] %}
+        {% if token.type == token_types["WHITESPACE"] or token.type == token_types["NEWLINE"] %}
+            {% set token_str = token.strings[token_whitespace_newline_str_to_output_index] %}
         {% else %}
-            {% set token_str = token.STRS[token_str_to_output_index] %}
+            {% set token_str = token.strings[token_str_to_output_index] %}
         {% endif %}
 {#        <h2>tokens[{{ untagged_tokens_index_start }}:{{ untagged_tokens_index_end + 1 }}]</h2>#}
-        <span id="{{ token.POS }}" class="token">{{ token_str }}</span>
+        <span id="{{ token.position }}" class="token">{{ token_str }}</span>
 
-        {% set next_pos = token.POS + token.LENGTH %}
+        {% set next_pos = token.position + token.length %}
 
         {# TODO: Fix missing str output #}
 
@@ -34,7 +34,7 @@
             {% set next_token = tokens[next_token_index] %}
             {# Untokenized char byte positions, i.e. indexes into the str, s.#}
             {% set untokenized_chars_pos_start = next_pos %}
-            {% set untokenized_chars_pos_end = next_token.POS - 1 %}
+            {% set untokenized_chars_pos_end = next_token.position - 1 %}
 
             {% include "__s.html" %}
         {% endif %}

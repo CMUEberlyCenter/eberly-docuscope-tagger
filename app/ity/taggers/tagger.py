@@ -3,29 +3,32 @@
 __author__ = 'kohlmannj'
 
 import abc
-from copy import copy, deepcopy
 from typing import List, Optional, Tuple
 
 from pydantic.main import BaseModel
 from ..base import BaseClass
-from ..tokenizers.tokenizer import Token, Tokenizer
+from ..tokenizers.tokenizer import Token, TokenType, Tokenizer
 
 class TaggerRule(BaseModel):
     """Model for Tagger rules."""
-    name: str
-    full_name: str
-    num_tags: int
-    num_included_tokens: int
-class TaggerTag(BaseModel):
+    # Note that the name and full_name values are intentionally invalid
+    # according to Tagger._is_valid_rule().
+    name: Optional[str] = None
+    full_name: Optional[str] = None
+    num_tags: int = 0
+    num_included_tokens: int = 0
+class TaggerTag(BaseModel): # pylint: disable=too-many-instance-attributes
     """Model for Tagger tags."""
-    rules: List[Tuple[str, List[str]]]
-    index_start: int
-    index_end: int
-    len: int
-    pos_start: int
-    pos_end: int
-    token_end_len: int
-    num_included_tokens: int
+    # Note that the index and pos values in this empty tag are intentionally
+    # invalid according to Tagger._is_valid_tag().
+    rules: List[Tuple[str, List[str]]] = []
+    index_start: int = -1
+    index_end: int = -1
+    len: int = 0
+    pos_start: int = -1
+    pos_end: int = -1
+    token_end_len: int = 0
+    num_included_tokens: int = 0
 
 class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     """
@@ -134,7 +137,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     * A tag's "pos_end" value should represent the starting byte position of
       the last token in a tag. This could equal the value of "pos_start" for
       a single-token tag. Meanwhile, the tag's "token_end_len" value contains
-      the value of ``last_token_in_tag[Tokenizer.INDEXES["LENGTH"]]`` for
+      the value of ``last_token_in_tag.length`` for
       purposes of correctly capturing the range of chars from the original str
       that the tag encapsulates.
 
@@ -171,40 +174,19 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     no_rules_rule_name = "!NORULES"
     excluded_rule_name = "!EXCLUDED"
 
-    # Note that the name and full_name values are intentionally invalid
-    # according to Tagger._is_valid_rule().
-    empty_rule: TaggerRule = {
-        "name": None,
-        "full_name": None,
-        "num_tags": 0,
-        "num_included_tokens": 0
-    }
-
-    # Note that the index and pos values in this empty tag are intentionally
-    # invalid according to Tagger._is_valid_tag().
-    empty_tag: TaggerTag = {
-        "rules": [],
-        "index_start": -1,
-        "index_end": -1,
-        "len": 0,
-        "pos_start": -1,
-        "pos_end": -1,
-        "token_end_len": 0,
-        "num_included_tokens": 0
-    }
     # pylint: disable=too-many-arguments
     def __init__(
             self,
-            label: Optional[str]=None,
-            excluded_token_types: list[int]=(),
-            case_sensitive: bool=True,
-            untagged_rule_name: Optional[str]=None,
-            no_rules_rule_name: Optional[str]=None,
-            excluded_rule_name: Optional[str]=None,
-            return_untagged_tags: bool=False,
-            return_no_rules_tags: bool=False,
-            return_excluded_tags: bool=False,
-            return_included_tags: bool=False
+            label: Optional[str] = None,
+            excluded_token_types: list[TokenType] = (),
+            case_sensitive: bool = True,
+            untagged_rule_name: Optional[str] = None,
+            no_rules_rule_name: Optional[str] = None,
+            excluded_rule_name: Optional[str] = None,
+            return_untagged_tags: bool = False,
+            return_no_rules_tags: bool = False,
+            return_excluded_tags: bool = False,
+            return_included_tags: bool = False
     ):
         """
         The Tagger constructor. Note the defaults---the Tagger base class is
@@ -332,14 +314,14 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         :return: True if the Tagger should return the rule, False otherwise.
         :rtype: bool
         """
-        return rule["name"] not in self.excluded_meta_rule_names and (
+        return rule.name not in self.excluded_meta_rule_names and (
             self.return_included_tags or (
                 not self.return_included_tags and
-                rule["name"] in self.meta_rule_names
+                rule.name in self.meta_rule_names
             )
         )
 
-    def _is_valid_rule(self, rule: TaggerRule) -> bool:
+    def _is_valid_rule(self, rule: Optional[TaggerRule]) -> bool:
         """
         A convenient method to validate a rule dict. Rule dicts must contain:
 
@@ -359,19 +341,14 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         """
         return (
             rule is not None and
-            "name" in rule and
-            isinstance(rule["name"], str) and
-            "full_name" in rule and
-            isinstance(rule["full_name"], str) and
-            rule["full_name"].startswith(self.full_label) and
-            "num_tags" in rule and
-            isinstance(rule["num_tags"], int) and
-            rule["num_tags"] >= 0 and
-            isinstance(rule["num_included_tokens"], int) and
-            rule["num_included_tokens"] >= 0
+            rule.name is not None and
+            rule.full_name is not None and
+            rule.full_name.startswith(self.full_label) and
+            rule.num_tags >= 0 and
+            rule.num_included_tokens >= 0
         )
 
-    def _is_valid_tag(self, tag: TaggerTag) -> bool:
+    def _is_valid_tag(self, tag: Optional[TaggerTag]) -> bool:
         """
         A convenient method to validate a tag dict. Tag dicts must contain:
 
@@ -389,15 +366,14 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         """
         return (
             tag is not None and
-            tag["rules"] is not None and
-            len(tag["rules"]) > 0 and
-            0 <= tag["index_start"] < len(self.tokens) and
-            tag["index_start"] <= tag["index_end"] < len(self.tokens) and
-            tag["len"] > 0 and
-            tag["pos_start"] >= 0 and
-            tag["pos_end"] >= 0 and
-            tag["pos_start"] <= tag["pos_end"] and
-            tag["token_end_len"] > 0
+            len(tag.rules) > 0 and
+            0 <= tag.index_start < len(self.tokens) and
+            tag.index_start <= tag.index_end < len(self.tokens) and
+            tag.len > 0 and
+            tag.pos_start >= 0 and
+            tag.pos_end >= 0 and
+            tag.pos_start <= tag.pos_end and
+            tag.token_end_len > 0
         )
 
     def _get_nth_next_included_token_index(
@@ -427,7 +403,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             if next_token_index >= len(self.tokens):
                 break
             next_token = self.tokens[next_token_index]
-            if next_token.TYPE not in self.excluded_token_types:
+            if next_token.type not in self.excluded_token_types:
                 offset -= 1
         # Did we actually get the nth next token index?
         if offset > 0:
@@ -451,10 +427,3 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         :rtype: dict of dicts and list of dicts
         """
         return {}, []
-
-def generate_empty_rule() -> TaggerRule:
-    """Generate a new empty tagger rule."""
-    return copy(Tagger.empty_rule)
-def generate_empty_tag() -> TaggerTag:
-    """Generate a new empty tagger tag."""
-    return deepcopy(Tagger.empty_tag)
