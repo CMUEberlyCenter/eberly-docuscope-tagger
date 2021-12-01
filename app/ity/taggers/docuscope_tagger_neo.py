@@ -40,10 +40,10 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
         rules = self.session.read_transaction(
             get_lat_rules, first_tokens, second_tokens, third_tokens, fourth_tokens)
         ds_rule = next((r for r in rules \
-            if self._long_rule_applies_at_token_index(r.path)), None)
+            if self._long_rule_applies_at_token_index(r['path'])), None)
         return ds_rule
 
-    def get_short_rule(self, token_ds_words):
+    def get_short_rule(self, token_ds_words: list[str]):
         return self.session.read_transaction(get_short_rules, token_ds_words)
 
 SEPARATOR = f"{hash('+++MichaelRingenbergSeparator+++')}"
@@ -93,12 +93,12 @@ def get_lat_rules(
                 "l.lat as lat ", # ORDER BY length(p) DESC "
                 first=first_tokens, second=second_tokens)
         # duck type NEXT as type is not in record properties.
-        res = [LatRule(lat = record["lat"],
-                       path = [record["start"],
-                               *[path["word"] for path in record["path"]
-                                 if "word" in path]])
+        res = [{"lat": record["lat"],
+                "path": [record["start"],
+                         *[path["word"] for path in record["path"]
+                           if "word" in path]]}
                for record in result]
-        res.sort(reverse=True, key=lambda p: len(p.path)) # python faster on sort
+        res.sort(reverse=True, key=lambda p: len(p["path"])) # python faster on sort
         CACHE.put(hsh, res)
     return res
 

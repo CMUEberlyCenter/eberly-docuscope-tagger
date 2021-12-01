@@ -229,7 +229,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         # if it encounters an invalid token type.
         Tokenizer.validate_excluded_token_types(excluded_token_types)
         self.case_sensitive = case_sensitive
-        self.excluded_token_types = excluded_token_types
+        self.excluded_token_types = frozenset(excluded_token_types)
         # The tokens given to self.tag() should be set to this instance field
         # so that private helper methods may have access to them.
         self.tokens = []
@@ -241,6 +241,14 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         self.return_no_rules_tags = return_no_rules_tags
         self.return_excluded_tags = return_excluded_tags
         self.return_included_tags = return_included_tags
+        excluded_meta_rule_names = []
+        if not self.return_untagged_tags:
+            excluded_meta_rule_names.append(self.untagged_rule_name)
+        if not self.return_no_rules_tags:
+            excluded_meta_rule_names.append(self.no_rules_rule_name)
+        if not self.return_excluded_tags:
+            excluded_meta_rule_names.append(self.excluded_rule_name)
+        self.excluded_meta_rule_names = frozenset(excluded_meta_rule_names)
         # Support for giving "meta" rules custom names.
         # Either use the name/s given to the constructor, or use this Tagger
         # class's default names.
@@ -256,6 +264,11 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             self.excluded_rule_name = excluded_rule_name
         else:
             self.excluded_rule_name = Tagger.excluded_rule_name
+        self.meta_rule_names = frozenset([
+            self.untagged_rule_name,
+            self.no_rules_rule_name,
+            self.excluded_rule_name
+        ])
         # Append some information to self._full_label.
         self._full_label += ".".join([
             str(setting)
@@ -269,7 +282,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         ])
 
     @property
-    def meta_rule_names(self) -> list[str]:
+    def meta_rule_names_list(self) -> list[str]:
         """
         A property containing the list of all "meta" rules.
 
@@ -283,7 +296,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         ]
 
     @property
-    def excluded_meta_rule_names(self) -> list[str]:
+    def excluded_meta_rule_names_list(self) -> list[str]:
         """
         A property containing the list of "meta" rule names which are to be
         excluded from the output of self.tag().
@@ -304,7 +317,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     def _should_return_rule(self, rule: TaggerRule) -> bool:
         """
         A convenient method to determine if self.tag() should return a
-        particular rule (and its corresponding tag). It should return it if:
+        particular rule (and its corresponding tag). It should return True if:
 
         * The rule's name is NOT in self.excluded_meta_rule_names AND
         * self.return_included_tags is True OR self.return_included_tags is
@@ -315,10 +328,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         :rtype: bool
         """
         return rule.name not in self.excluded_meta_rule_names and (
-            self.return_included_tags or (
-                not self.return_included_tags and
-                rule.name in self.meta_rule_names
-            )
+            self.return_included_tags or rule.name in self.meta_rule_names
         )
 
     def _is_valid_rule(self, rule: Optional[TaggerRule]) -> bool:

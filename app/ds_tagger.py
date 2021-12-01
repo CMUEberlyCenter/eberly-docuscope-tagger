@@ -39,7 +39,7 @@ def get_wordclasses() -> dict[str, list[str]]:
         logging.error("No wordclasses in %s", wcs)
     return data
 
-def create_ds_tagger(dictionary):
+def create_ds_tagger(dictionary: str):
     """Create DocuScope Ity tagger using the specified dictionary."""
     dictionary = dictionary or Config.DICTIONARY
     ds_dict = get_dictionary(dictionary)

@@ -1,10 +1,10 @@
 """ The DocuScope Tagger """
 # coding=utf-8
-__author__ = 'kohlmannj'
 
+from itertools import product
 from typing import Optional
 from pydantic.main import BaseModel
-from .docuscope_tagger_base import DocuscopeTaggerBase
+from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule
 
 class DocuscopeDictionary(BaseModel):
     """Model for DocuScope dictionaries."""
@@ -33,8 +33,8 @@ class DocuscopeTagger(DocuscopeTaggerBase):
 
         # Allow DocuscopeTagger to be initialized with a different path to the Docuscope dictionary.
         if dictionary_path is not None:
-            self.dictionary_path = dictionary_path
             # Swizzle the dictionary filename into this instance's label.
+            self._label = self._label or ""
             self._label += "." + dictionary_path
             if self.return_excluded_tags:
                 self._label += "." + "return_excluded_tags"
@@ -56,33 +56,30 @@ class DocuscopeTagger(DocuscopeTaggerBase):
 
     def get_long_rule(self):
         next_token_index = self._get_nth_next_included_token_index()
-        best_ds_rule = None
-        best_ds_lat = None
-        best_ds_rule_len = 0
-        # pylint: disable=too-many-nested-blocks
-        for token_ds_word in self._get_ds_words_for_token_index(self.token_index):
+        rules: list[LatRule] = []
+        # cartesian product of the first and second word for token lists
+        for token_ds_word, next_token_ds_word in product(
+            self._get_ds_words_for_token_index(self.token_index),
+            self._get_ds_words_for_token_index(next_token_index)):
             try:
-                rule_dict = self._ds_dict["rules"][token_ds_word]
-                for next_token_ds_word in self._get_ds_words_for_token_index(next_token_index):
-                    try:  # for the rd[nw]
-                        for ds_lat, ds_rules in rule_dict[next_token_ds_word].items():
-                            for ds_partial_rule in ds_rules:
-                                ds_rule = [token_ds_word, next_token_ds_word, *ds_partial_rule]
-                                # check to see if the rule applies
-                                ds_rule_len = len(ds_rule)
-                                if (ds_rule_len > best_ds_rule_len and
-                                    self._long_rule_applies_at_token_index(ds_rule)):
-                                    # keep the "best" rule
-                                    best_ds_rule = ds_rule
-                                    best_ds_lat = ds_lat
-                                    best_ds_rule_len = ds_rule_len
-                    except KeyError:
-                        pass
+                rule_dict = self._ds_dict["rules"][token_ds_word][next_token_ds_word]
             except KeyError:
-                pass
-        return {"lat": best_ds_lat, "path": best_ds_rule}
+                continue # skip if rule for given pair does not exist
+            for ds_lat, ds_rules in rule_dict.items():
+                for ds_partial_rule in ds_rules:
+                    # reconstruct full path
+                    ds_rule = [token_ds_word, next_token_ds_word, *ds_partial_rule]
+                    rules.append({"lat": ds_lat, "path": ds_rule})
+        # sort by length of the path, longest to shortest
+        rules.sort(reverse=True, key=lambda lr: len(lr['path']))
+        # get the first applicable rule which due to the sorting will
+        # be the longest applicable rule.
+        best_ds_rule = next(
+            (r for r in rules if self._long_rule_applies_at_token_index(r['path'])),
+            None)
+        return best_ds_rule
 
-    def get_short_rule(self, token_ds_words):
+    def get_short_rule(self, token_ds_words: list[str]):
         # Try to find a short rule for one of this token's ds_words.
         for ds_word in token_ds_words:
             if ds_word in self._ds_dict["shortRules"]:

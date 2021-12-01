@@ -3,13 +3,13 @@
 
 import abc
 import logging
-from typing import Optional
+from typing import Optional, TypedDict
 from pydantic import BaseModel
 
 from ..tokenizers.tokenizer import Token, TokenType
 from .tagger import Tagger, TaggerRule, TaggerTag
 
-class LatRule(BaseModel):
+class LatRule(TypedDict):
     """Model for LAT rules."""
     #pylint: disable=too-few-public-methods
     lat: str # The LAT id
@@ -116,18 +116,18 @@ class DocuscopeTaggerBase(Tagger):
         rule = TaggerRule()
         tag = TaggerTag()
         if ds_rule is not None:
-            rule.name = ds_rule.lat
+            rule.name = ds_rule['lat']
             rule.full_name = ".".join([self.full_label, rule.name])
             last_token_index = self._get_nth_next_included_token_index(
-                offset=len(ds_rule.path) - 1)
-            tag.rules=[(rule.full_name, ds_rule.path)]
+                offset=len(ds_rule['path']) - 1)
+            tag.rules=[(rule.full_name, ds_rule['path'])]
             tag.index_start=self.token_index
             tag.index_end=last_token_index
             tag.pos_start=self.tokens[self.token_index].position
             tag.pos_end=self.tokens[last_token_index].position
             tag.len=tag.index_end - tag.index_start + 1
             tag.token_end_len=self.tokens[last_token_index].length
-            tag.num_included_tokens=len(ds_rule.path)
+            tag.num_included_tokens=len(ds_rule['path'])
         # Okay, do we have a valid tag and tag to return? (That's the best rule).
         if self._is_valid_rule(rule) and self._is_valid_tag(tag):
             # Return the best rule's rule and tag.
@@ -153,7 +153,7 @@ class DocuscopeTaggerBase(Tagger):
             return False
 
     @abc.abstractmethod
-    def get_short_rule(self, _token_ds_words) -> tuple[Optional[str], Optional[str]]:
+    def get_short_rule(self, token_ds_words: list[str]) -> tuple[Optional[str], Optional[str]]:
         """For a list of token words, lookup a matching short rule."""
         return None, None
 

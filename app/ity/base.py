@@ -38,7 +38,7 @@ class BaseClass(ABC):
 
     def __init__(self, label: Optional[str]=None):
         self._label = label
-        self._full_label = ""
+        self._full_label: str = ""
 
     @property
     def full_label(self):
