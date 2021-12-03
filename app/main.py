@@ -1,4 +1,5 @@
 """ The online DocuScope tagger interface. """
+import cProfile
 from datetime import datetime, timezone
 import logging
 import traceback
@@ -13,6 +14,7 @@ import neo4j
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.expression import update
 #from starlette.middeware.cors import CORSMiddleware
 
 from default_settings import Config
@@ -89,16 +91,18 @@ def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session) -> None:
         Filesystem.content,
         Filesystem.name).filter(Filesystem.id == doc_id).first()
     if doc_content:
-        sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
-            {"state": "submitted"}, synchronize_session=False)
+        sql.execute(update(Filesystem).where(
+            Filesystem.id == doc_id).values(
+            state='submitted'))
+        sql.commit()
         try:
             # convert docx files.
             if name.endswith(".docx"):
                 doc_content = docx_to_text(doc_content)
             # Should no longer need as shared prepopulated tagger.
             tagger = neo_tagger(WORDCLASSES, neo)
-            processed = tagger.tag(doc_content)
-            if processed.ds_num_word_tokens == 0:
+            processed = tagger.tag(doc_content).dict()
+            if processed['ds_num_word_tokens'] == 0:
                 state = 'error'
                 processed['error'] = 'Document failed to parse: no word tokens found.'
                 logging.error("Invalid parsing results %s: no word tokens.", doc_id)
@@ -113,8 +117,12 @@ def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session) -> None:
             state = 'error'
     processed['date_tagged'] = datetime.now(timezone.utc).astimezone().isoformat()
     processed['tagging_time'] = str(datetime.now() - start_time)
-    sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
-        {"state": state, "processed": processed})
+    sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+        state = state,
+        processed = processed
+    ))
+    #sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
+    #    {"state": state, "processed": processed})
     logging.info("Finished tagging %s (%s)", doc_id, state)
 
 
@@ -131,7 +139,7 @@ async def tag(uuid: UUID,
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
     try:
-        UUID(uuid)
+        UUID(f"{uuid}")
     except ValueError as vexc:
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
@@ -188,6 +196,15 @@ async def test_tagging(uuid: UUID,
                             status_code=status.HTTP_404_NOT_FOUND)
     raise HTTPException(detail=f"Unknown state: {state} for {uuid}",
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+@app.get("/profile/{uuid}")
+async def profile_tagging(uuid: UUID, sql: Session = Depends(session), neo: neo4j.Session = Depends(neo_session)):
+    (doc_content,) = sql.query(Filesystem.content).filter(Filesystem.id == uuid).first()
+    tagger = neo_tagger(WORDCLASSES, neo)
+    content = docx_to_text(doc_content)
+    with cProfile.Profile() as pr:
+        tagger.tag(content)
+    pr.dump_stats('mprof.stat')
 
 @app.post('/batchtest', response_model=Dict[UUID, CheckResults])
 def test_corpus(

@@ -1,6 +1,7 @@
 """Command line interface for DocuScope Tagger.
 Run with --help to see options.
 """
+import cProfile
 import argparse
 from contextlib import contextmanager
 from datetime import timedelta
@@ -8,15 +9,19 @@ import logging
 from multiprocessing import Pool
 import time
 import traceback
+from typing import Optional
 import uuid
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.session import Session
+from sqlalchemy.sql.expression import update
 
 from default_settings import Config
 from ds_tagger import create_ds_tagger
 import ds_db
 from docx_to_text import docx_to_text
+from ity.tagger import ItyTagger
 
 PARSER = argparse.ArgumentParser(
     prog="docuscope-tagger.sif",
@@ -46,9 +51,9 @@ else:
 SESSION = sessionmaker(bind=ENGINE)
 
 @contextmanager
-def session_scope():
+def session_scope() -> Session:
     """Establish a scoped session for accessing the database."""
-    session = SESSION()
+    session: Session = SESSION()
     try:
         yield session
         session.commit()
@@ -58,7 +63,7 @@ def session_scope():
     finally:
         session.close()
 
-def tag_entry(tagger, doc_id):
+def tag_entry(tagger: ItyTagger, doc_id: str):
     """Use DocuScope tagger on the specified document.
     Arguments:
     doc_id: a uuid of the document in the database.
@@ -69,21 +74,24 @@ def tag_entry(tagger, doc_id):
     doc_state = "error"
     ENGINE.dispose()
     logging.info("Trying to tag %s", doc_id)
-    with session_scope() as session:
+    session: Session = SESSION()
+    with session.begin():
         # Removed retrieval of dictionary name.  Unused and NULL values crash #7
-        (doc_content,) = session.query(ds_db.Filesystem.content)\
-                     .filter(ds_db.Filesystem.id == doc_id).first()
+        (doc_content, doc_name) = session.query(
+            ds_db.Filesystem.content, ds_db.Filesystem.name).filter(
+            ds_db.Filesystem.id == doc_id).first()
         if doc_content:
-            session.query(ds_db.Filesystem)\
-               .filter(ds_db.Filesystem.id == doc_id)\
-               .update({"state": "submitted"},
-                       synchronize_session=False)
+            session.execute(update(ds_db.Filesystem).where(
+                ds_db.Filesystem.id == doc_id).values(
+                state = "submitted"))
         else:
             logging.error("Could not load %s!", doc_id)
             raise FileNotFoundError(doc_id)
     if doc_content:
         try:
-            doc_processed = tagger.tag(docx_to_text(doc_content))
+            if doc_name.endswith(".docx"):
+                doc_content = docx_to_text(doc_content)
+            doc_processed = tagger.tag(doc_content).dict()
             if doc_processed.get('ds_num_word_tokens', 0) == 0:
                 doc_state = "error"
                 doc_processed['error'] = 'Document failed to parse: no word tokens found.'
@@ -97,14 +105,14 @@ def tag_entry(tagger, doc_id):
             doc_processed = {'error': f"{exc}",
                              'trace': traceback.format_exc()}
             doc_state = "error"
-    with session_scope() as session:
-        session.query(ds_db.Filesystem)\
-               .filter_by(id=doc_id)\
-               .update({"processed": doc_processed,
-                        "state": doc_state})
+    with session.begin():
+        session.execute(update(ds_db.Filesystem).where(
+            ds_db.Filesystem.id == doc_id).values(
+            state = doc_state,
+            processed = doc_processed))
     logging.info("Finished tagging %s", doc_id)
 
-def valid_uuid(doc_id):
+def valid_uuid(doc_id: str):
     """Check if the given document id is a uuid string."""
     try:
         uuid.UUID(doc_id)
@@ -113,16 +121,18 @@ def valid_uuid(doc_id):
         logging.warning("%s: %s", vexc, doc_id)
         return False
 
-TAGGER = None
+TAGGER: Optional[ItyTagger] = None
 
 def tag(doc_id):
     """ Wrapper function for tag_entry that includes the tagger. """
+    #cProfile.run(f"tag_entry(TAGGER, '{doc_id}')", 'profile')
     return tag_entry(TAGGER, doc_id)
 
 def run_tagger(args):
     """Gathers the document ids and runs the tagger on them (multitreaded)"""
     ids = {id for id in args.uuid if valid_uuid(id)} # only uuids
-    with session_scope() as session:
+    session: Session = SESSION()
+    with session.begin():
         # check if uuids are in database
         valid_ids = {str(doc[0]) for doc in session.query(ds_db.Filesystem.id)
                      .filter(ds_db.Filesystem.id.in_(ids))}
@@ -152,8 +162,9 @@ def run_tagger(args):
         logging.info('Loaded dictionary: %s (in %s)', Config.DICTIONARY,
                      timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
-        with Pool() as pool:
-            pool.map(tag, valid_ids)
+        tag(list(valid_ids)[0])
+        #with Pool() as pool:
+        #    pool.map(tag, valid_ids)
     else:
         logging.info('No documents to tag.')
 
