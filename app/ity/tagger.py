@@ -1,5 +1,8 @@
 """ Base Ity tagger class with the main method of tag_string. """
 from collections import Counter
+from dataclasses import asdict
+from datetime import datetime
+import logging
 import re
 
 from pydantic.main import BaseModel
@@ -35,8 +38,19 @@ class ItyTagger():
         self.tagger_type = tagger_type or "DocuscopeTagger"
     def tag_string(self, string: str) -> ItyTaggerResult:
         """Tags a string."""
+        start_time = datetime.now()
         tokens = self.tokenizer.tokenize(string)
+        logging.info("Tokenize %d in %s", len(tokens), datetime.now() - start_time)
+        start_time = datetime.now()
         tag_dict, tag_map = self.tagger.tag(tokens)
+        logging.info("Tagging %d in %s", len(tag_map), datetime.now() - start_time)
+        start_time = datetime.now()
+        output = self.formatter.format(
+            tags = (tag_dict, tag_map),
+            tokens = tokens,
+            text_str = string
+        )
+        logging.info("Formatting time: %s", datetime.now() - start_time)
 
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(self.tokenizer.excluded_token_types)
@@ -50,11 +64,7 @@ class ItyTagger():
             num_excluded_tokens=sum([type_count[etype]
                                      for etype in self.tokenizer.excluded_token_types]),
             tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tag_map],
-            format_output=self.formatter.format(
-                tags=(tag_dict, tag_map),
-                tokens=tokens,
-                text_str=string
-            )
+            format_output=output
         )
     def tag(self, string):
         """ Tags the given string and outputs json coercable dictionary. """
@@ -98,7 +108,7 @@ def tag_json(result: ItyTaggerResult) -> DocuScopeTagResult:
 
     Returns:
     A dictionary of DocuScope tag statistics."""
-    tags_dict = {val.name: DocuScopeTagCount(**val.dict()) for val in result.tag_dict.values()}
+    tags_dict = {val.name: DocuScopeTagCount(**asdict(val)) for val in result.tag_dict.values()}
     cdict = countdict(result.tag_chain)
     count_dict = {str(key): value for key, value in cdict.items()}
     return DocuScopeTagResult(

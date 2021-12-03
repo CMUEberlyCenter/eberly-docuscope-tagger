@@ -3,13 +3,15 @@
 __author__ = 'kohlmannj'
 
 import abc
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple, TypedDict
 
 from pydantic.main import BaseModel
 from ..base import BaseClass
 from ..tokenizers.tokenizer import Token, TokenType, Tokenizer
 
-class TaggerRule(BaseModel):
+@dataclass
+class TaggerRule():
     """Model for Tagger rules."""
     # Note that the name and full_name values are intentionally invalid
     # according to Tagger._is_valid_rule().
@@ -17,6 +19,7 @@ class TaggerRule(BaseModel):
     full_name: Optional[str] = None
     num_tags: int = 0
     num_included_tokens: int = 0
+
 class TaggerTag(BaseModel): # pylint: disable=too-many-instance-attributes
     """Model for Tagger tags."""
     # Note that the index and pos values in this empty tag are intentionally

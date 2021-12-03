@@ -27,8 +27,9 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
     def get_long_rule(self) -> Optional[LatRule]:
         first_tokens = self._get_ds_words_for_token_index(self.token_index)
         second_token_index = self._get_nth_next_included_token_index()
+        if second_token_index is None: return None # abort in case there is no second
         second_tokens = self._get_ds_words_for_token_index(second_token_index) \
-            if second_token_index else [] # should not happen, but just in case
+            if second_token_index else [] # does not happen, but just in case
         third_token_index = self._get_nth_next_included_token_index(
             starting_token_index=second_token_index)
         third_tokens = self._get_ds_words_for_token_index(third_token_index) \
@@ -39,8 +40,9 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
             if fourth_token_index else []
         rules = self.session.read_transaction(
             get_lat_rules, first_tokens, second_tokens, third_tokens, fourth_tokens)
+        tokens = self.get_next_tokens_in_range(0, len(rules[0]['path'])) if len(rules) > 0 else []
         ds_rule = next((r for r in rules \
-            if self._long_rule_applies_at_token_index(r['path'])), None)
+            if self.rule_applies_for_tokens(r['path'], tokens, offset=2)), None)
         return ds_rule
 
     def get_short_rule(self, token_ds_words: list[str]):
@@ -60,36 +62,36 @@ def get_lat_rules(
     if res is None:
         if len(fourth_tokens) > 0:
             result = trx.run(
-                "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[w4:NEXT]->()-[*1..25]->(l:Lat) "
+                "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[w4:NEXT]->()-[:NEXT*0..25]->()-[:LAT]->(l:Lat) "
                 "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third "
                 "AND w4.word IN $fourth "
                 "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat " # ORDER BY length(p) DESC "
-                "UNION MATCH p = (s:Start)-[n:NEXT]->()-[m:NEXT]->()-[:LAT]->(l:Lat) "
-                "WHERE s.word IN $first AND n.word IN $second AND m.word IN $third "
-                "RETURN s.word AS start, relationships(p) as path, "
+                "UNION MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[:LAT]->(l:Lat) "
+                "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third "
+                "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat " # ORDER BY length(p) DESC "
-                "UNION MATCH p = (s:Start)-[n:NEXT]->()-[:LAT]->(l:Lat) "
-                "WHERE s.word IN $first AND n.word IN $second "
-                "RETURN s.word AS start, relationships(p) as path, "
+                "UNION MATCH p = (w1:Start)-[w2:NEXT]->()-[:LAT]->(l:Lat) "
+                "WHERE w1.word IN $first AND w2.word IN $second "
+                "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat ",# "ORDER BY length(p) DESC",
                 first=first_tokens, second=second_tokens, third=third_tokens, fourth=fourth_tokens)
         elif len(third_tokens) > 0:
             result = trx.run(
-                "MATCH p = (s:Start)-[n:NEXT]->()-[m:NEXT]->()-[:LAT]->(l:Lat) "
-                "WHERE s.word IN $first AND n.word IN $second AND m.word IN $third "
-                "RETURN s.word AS start, relationships(p) as path, "
+                "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[:LAT]->(l:Lat) "
+                "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third "
+                "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat " # ORDER BY length(p) DESC "
-                "UNION MATCH p = (s:Start)-[n:NEXT]->()-[:LAT]->(l:Lat) "
-                "WHERE s.word IN $first AND n.word IN $second "
-                "RETURN s.word AS start, relationships(p) as path, "
+                "UNION MATCH p = (w1:Start)-[w2:NEXT]->()-[:LAT]->(l:Lat) "
+                "WHERE w1.word IN $first AND w2.word IN $second "
+                "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat ",# "ORDER BY length(p) DESC",
                 first=first_tokens, second=second_tokens, third=third_tokens)
         else:
             result = trx.run(
-                "MATCH p = (s:Start)-[n:NEXT]->()-[:LAT]->(l:Lat) "
-                "WHERE s.word IN $first AND n.word IN $second "
-                "RETURN s.word AS start, relationships(p) as path, "
+                "MATCH p = (w1:Start)-[w2:NEXT]->()-[:LAT]->(l:Lat) "
+                "WHERE w1.word IN $first AND w2.word IN $second "
+                "RETURN w1.word AS start, relationships(p) as path, "
                 "l.lat as lat ", # ORDER BY length(p) DESC "
                 first=first_tokens, second=second_tokens)
         # duck type NEXT as type is not in record properties.

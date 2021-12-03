@@ -4,7 +4,6 @@
 import abc
 import logging
 from typing import Optional, TypedDict
-from pydantic import BaseModel
 
 from ..tokenizers.tokenizer import Token, TokenType
 from .tagger import Tagger, TaggerRule, TaggerTag
@@ -134,6 +133,27 @@ class DocuscopeTaggerBase(Tagger):
             return rule, tag
         # No long rule applies.
         return None, None
+    
+    def get_next_tokens_in_range(self, m: int, n: int) -> list[set[str]]:
+        """Get the list of sets of tokens from offset m to n from the current token index"""
+        tokens = []
+        token_index = self._get_nth_next_included_token_index(offset=m)
+        while (token_index is not None) and (m < n):
+            token = self._get_ds_words_for_token_index(token_index)
+            # TODO: abort on empty token
+            tokens.append(set(token))
+            token_index = self._get_nth_next_included_token_index(starting_token_index=token_index)
+            m = m + 1
+        return tokens
+    def rule_applies_for_tokens(self, rule: list[str], tokens: list[set[str]], offset:int=0) -> bool:
+        """Check if a rule path applies for a given ordered list of tokens."""
+        if len(rule) > len(tokens):
+            return False
+        for i in reversed(range(offset, len(rule))):
+            if rule[i] not in tokens[i]:
+                return False
+        return True
+
 
     def _long_rule_applies_at_token_index(self, rule: list[str]) -> bool:
         """ Check if rule applies at the current location. """

@@ -74,8 +74,9 @@ class DocuscopeTagger(DocuscopeTaggerBase):
         rules.sort(reverse=True, key=lambda lr: len(lr['path']))
         # get the first applicable rule which due to the sorting will
         # be the longest applicable rule.
+        tokens = self.get_next_tokens_in_range(0, len(rules[0]['path'])) if len(rules) > 0 else []
         best_ds_rule = next(
-            (r for r in rules if self._long_rule_applies_at_token_index(r['path'])),
+            (r for r in rules if self.rule_applies_for_tokens(r['path'], tokens, offset=2)),
             None)
         return best_ds_rule
 
