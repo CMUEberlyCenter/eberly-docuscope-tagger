@@ -11,7 +11,8 @@ def get_secret(env_var, default=None):
 class Config(): #pylint: disable=R0903
     """Configuration object for storing application configuration variables."""
     DICTIONARY = 'default'
-    DICTIONARY_HOME = os.getenv('DICTIONARY_HOME', os.path.join(os.path.dirname(__file__), 'dictionaries'))
+    DICTIONARY_HOME = os.getenv('DICTIONARY_HOME',
+                                os.path.join(os.path.dirname(__file__), 'dictionaries'))
     NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687/neo4j')
     NEO4J_USER = get_secret('NEO4J_USER', 'neo4j')
     NEO4J_PASS = get_secret('NEO4J_PASS', 'docuscope')

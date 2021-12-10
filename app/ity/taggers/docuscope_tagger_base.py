@@ -1,12 +1,12 @@
 """ The DocuScope Tagger Common methods. """
 # coding=utf-8
-
 import abc
 import logging
 from typing import Optional, TypedDict
 
 from ..tokenizers.tokenizer import Token, TokenType
 from .tagger import Tagger, TaggerRule, TaggerTag
+
 
 class LatRule(TypedDict):
     """Model for LAT rules."""
@@ -112,9 +112,9 @@ class DocuscopeTaggerBase(Tagger):
 
         ds_rule = self.get_long_rule()
 
-        rule = TaggerRule()
-        tag = TaggerTag()
         if ds_rule is not None:
+            rule = TaggerRule()
+            tag = TaggerTag()
             rule.name = ds_rule['lat']
             rule.full_name = ".".join([self.full_label, rule.name])
             last_token_index = self._get_nth_next_included_token_index(
@@ -127,33 +127,17 @@ class DocuscopeTaggerBase(Tagger):
             tag.len=tag.index_end - tag.index_start + 1
             tag.token_end_len=self.tokens[last_token_index].length
             tag.num_included_tokens=len(ds_rule['path'])
-        # Okay, do we have a valid tag and tag to return? (That's the best rule).
-        if self._is_valid_rule(rule) and self._is_valid_tag(tag):
-            # Return the best rule's rule and tag.
-            return rule, tag
+            # Okay, do we have a valid rule and tag to return? (That's the best rule).
+            if self._is_valid_rule(rule) and self._is_valid_tag(tag):
+                # Return the best rule's rule and tag.
+                return rule, tag
         # No long rule applies.
         return None, None
-    
-    def get_next_tokens_in_range(self, m: int, n: int) -> list[set[str]]:
-        """Get the list of sets of tokens from offset m to n from the current token index"""
-        tokens = []
-        token_index = self._get_nth_next_included_token_index(offset=m)
-        while (token_index is not None) and (m < n):
-            token = self._get_ds_words_for_token_index(token_index)
-            # TODO: abort on empty token
-            tokens.append(set(token))
-            token_index = self._get_nth_next_included_token_index(starting_token_index=token_index)
-            m = m + 1
-        return tokens
-    def rule_applies_for_tokens(self, rule: list[str], tokens: list[set[str]], offset:int=0) -> bool:
-        """Check if a rule path applies for a given ordered list of tokens."""
-        if len(rule) > len(tokens):
-            return False
-        for i in reversed(range(offset, len(rule))):
-            if rule[i] not in tokens[i]:
-                return False
-        return True
 
+    def get_next_ds_words_in_range(self, start: int, end: int) -> list[set[str]]:
+        """Get the list of sets of tokens from offset m to n from the current token index"""
+        return [set(self._get_ds_words_for_token(token))
+                for token in self.get_next_tokens_in_range(start, end)]
 
     def _long_rule_applies_at_token_index(self, rule: list[str]) -> bool:
         """ Check if rule applies at the current location. """
@@ -291,3 +275,13 @@ class DocuscopeTaggerBase(Tagger):
         self.tags = []
         # Return the goods.
         return rules, tags
+
+def rule_applies_for_tokens(rule: list[str], tokens: list[set[str]],
+                            offset:int = 0) -> bool:
+    """Check if a rule path applies for a given ordered list of tokens."""
+    if len(rule) > len(tokens):
+        return False
+    for i in reversed(range(offset, len(rule))):
+        if rule[i] not in tokens[i]:
+            return False
+    return True

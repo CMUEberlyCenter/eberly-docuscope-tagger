@@ -4,7 +4,7 @@
 from itertools import product
 from typing import Optional
 from pydantic.main import BaseModel
-from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule
+from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule, rule_applies_for_tokens
 
 class DocuscopeDictionary(BaseModel):
     """Model for DocuScope dictionaries."""
@@ -76,7 +76,7 @@ class DocuscopeTagger(DocuscopeTaggerBase):
         # be the longest applicable rule.
         tokens = self.get_next_tokens_in_range(0, len(rules[0]['path'])) if len(rules) > 0 else []
         best_ds_rule = next(
-            (r for r in rules if self.rule_applies_for_tokens(r['path'], tokens, offset=2)),
+            (r for r in rules if rule_applies_for_tokens(r['path'], tokens, offset=2)),
             None)
         return best_ds_rule
 

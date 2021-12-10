@@ -3,8 +3,8 @@
 __author__ = 'kohlmannj'
 
 import abc
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, TypedDict
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 from pydantic.main import BaseModel
 from ..base import BaseClass
@@ -423,6 +423,20 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
             return None
         return next_token_index
 
+    def get_next_tokens_in_range(self, start: int, end: int) -> list[Token]:
+        """Get the list of tokens from the current index plus m to n.
+
+        Note: the number of tokens returned will only be as long as
+        the available tokens and thus the length of the resulting list
+        might be less than n-m."""
+        tokens = []
+        token_index = self._get_nth_next_included_token_index(offset=start)
+        while (token_index is not None) and (start < end):
+            tokens.append(self.tokens[token_index])
+            token_index = self._get_nth_next_included_token_index(starting_token_index=token_index)
+            start += 1
+        return tokens
+
     @abc.abstractmethod
     def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         """
@@ -433,10 +447,9 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
 
         :param tokens: A list of tokens returned by an Ity Tokenizer's
                        tokenize() method.
-        :type tokens: list of lists (that look like Ity Tokenizer token lists)
-        :return: In order: rule, a dict of dicts (that look like
-                 Tagger.empty_rule), and tags, a list of dicts (that look like
-                 Tagger.empty_tag).
-        :rtype: dict of dicts and list of dicts
+        :type tokens: list of Tokens.
+        :return: In order: rule, a dict of Tagger Rules,
+                 and tags, a list of Tagger Tags.
+        :rtype: dict of TaggerRules and list of TaggerTags
         """
         return {}, []

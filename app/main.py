@@ -198,13 +198,17 @@ async def test_tagging(uuid: UUID,
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 @app.get("/profile/{uuid}")
-async def profile_tagging(uuid: UUID, sql: Session = Depends(session), neo: neo4j.Session = Depends(neo_session)):
+async def profile_tagging(
+        uuid: UUID,
+        sql: Session = Depends(session),
+        neo: neo4j.Session = Depends(neo_session)):
+    """Profile tagging and dump to file."""
     (doc_content,) = sql.query(Filesystem.content).filter(Filesystem.id == uuid).first()
     tagger = neo_tagger(WORDCLASSES, neo)
     content = docx_to_text(doc_content)
-    with cProfile.Profile() as pr:
+    with cProfile.Profile() as prof:
         tagger.tag(content)
-    pr.dump_stats('mprof.stat')
+    prof.dump_stats('mprof.stat')
 
 @app.post('/batchtest', response_model=Dict[UUID, CheckResults])
 def test_corpus(
