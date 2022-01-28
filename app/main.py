@@ -8,6 +8,8 @@ from uuid import UUID
 from difflib import ndiff
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
+#from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+#from fastapi.middleware.gzip import GZipMiddleware # no large messages returned
 from jsondiff import diff
 from neo4j import GraphDatabase
 import neo4j
@@ -44,6 +46,8 @@ app = FastAPI(
 #    allow_credentials=True,
 #    allow_methods=['GET', 'POST'],
 #    allow_headers=['*'])
+#app.add_middleware(HTTPSRedirectMiddleware)
+#app.add_middleware(GZipMiddleware)
 
 @app.on_event("startup")
 async def startup_event():
@@ -74,6 +78,7 @@ def session():
         raise
     finally:
         my_session.close()
+
 def neo_session():
     """Establish a scoped session for accessing the neo4j database."""
     my_session: neo4j.Session = DRIVER.session()

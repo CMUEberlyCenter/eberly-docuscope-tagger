@@ -1,4 +1,8 @@
-"""Utility function for decoding docx files."""
+"""Utility function for decoding docx files.
+
+Basically, it takes each paragraph identified in the given docx
+and then outputs the text with PZPZPZ and two newlines at the end.
+"""
 import io
 import re
 from docx import Document
