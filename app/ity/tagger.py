@@ -7,7 +7,7 @@ import re
 
 from pydantic.main import BaseModel
 
-from default_settings import Config
+from default_settings import SETTINGS
 from .formatters.formatter import Formatter
 from .formatters.simple_html_formatter import SimpleHTMLFormatter
 from .tokenizers.regex_tokenizer import RegexTokenizer
@@ -118,7 +118,7 @@ def tag_json(result: ItyTaggerResult) -> DocuScopeTagResult:
         ds_num_word_tokens=result.num_word_tokens,
         ds_num_excluded_tokens=result.num_excluded_tokens,
         ds_num_punctuation_tokens=result.num_punctuation_tokens,
-        ds_dictionary=Config.DICTIONARY,
+        ds_dictionary=SETTINGS.dictionary,
         ds_tag_dict=tags_dict,
         ds_count_dict=count_dict
     )

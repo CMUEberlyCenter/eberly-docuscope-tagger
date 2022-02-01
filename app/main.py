@@ -19,13 +19,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import update
 #from starlette.middeware.cors import CORSMiddleware
 
-from default_settings import Config
+from default_settings import SQLALCHEMY_DATABASE_URI, SETTINGS
 from ds_tagger import get_wordclasses
 from ds_db import Filesystem
 from docx_to_text import docx_to_text
 from ity.tagger import neo_tagger
 
-ENGINE = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE)
 DRIVER: neo4j.Driver = None
 WORDCLASSES = None
@@ -56,8 +56,8 @@ async def startup_event():
     Initializes database driver."""
     global DRIVER # pylint: disable=global-statement
     DRIVER = GraphDatabase.driver(
-        Config.NEO4J_URI,
-        auth=(Config.NEO4J_USER, Config.NEO4J_PASS))
+        SETTINGS.neo4j_uri,
+        auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password))
     global WORDCLASSES # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()
 

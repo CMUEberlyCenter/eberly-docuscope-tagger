@@ -8,12 +8,12 @@ import logging
 from pathlib import Path
 from ity.tagger import ds_tagger
 from ity.taggers.docuscope_tagger import DocuscopeDictionary
-from default_settings import Config
+from default_settings import SETTINGS
 
 def get_dictionary(dictionary) -> DocuscopeDictionary:
     """Retrieve the given dictionary."""
-    dictionary = dictionary or Config.DICTIONARY
-    ds_dict = Path(Config.DICTIONARY_HOME) / f'{dictionary}.json.gz'
+    dictionary = dictionary or SETTINGS.dictionary
+    ds_dict = Path(SETTINGS.dictionary_home) / f'{dictionary}.json.gz'
     data = {}
     if ds_dict.is_file(): # try compressed dictionary
         with gzip.open(ds_dict, 'rt') as dic_in:
@@ -29,7 +29,7 @@ def get_dictionary(dictionary) -> DocuscopeDictionary:
 def get_wordclasses() -> dict[str, list[str]]:
     """Retrieve the wordclasses from the wordclasses.json file."""
     data = {}
-    wcs = Path(Config.DICTIONARY_HOME) / 'wordclasses.json'
+    wcs = Path(SETTINGS.dictionary_home) / 'wordclasses.json'
     if wcs.is_file():
         with open(wcs, 'rt', encoding="UTF-8") as wcin:
             data = json.loads(wcin.read())
@@ -41,7 +41,7 @@ def get_wordclasses() -> dict[str, list[str]]:
 
 def create_ds_tagger(dictionary: str):
     """Create DocuScope Ity tagger using the specified dictionary."""
-    dictionary = dictionary or Config.DICTIONARY
+    dictionary = dictionary or SETTINGS.dictionary
     ds_dict = get_dictionary(dictionary)
     if not ds_dict:
         logging.error("Invalid dictionary: %s", dictionary)

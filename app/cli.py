@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql.expression import update
 
-from default_settings import Config
+from default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from ds_tagger import create_ds_tagger
 import ds_db
 from docx_to_text import docx_to_text
@@ -47,7 +47,7 @@ if ARGS.db:
     ENGINE = create_engine(f"mysql+mysqldb://{ARGS.db}")
 else:
     logging.info('Database settings env')
-    ENGINE = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+    ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE)
 
 @contextmanager
@@ -154,12 +154,12 @@ def run_tagger(args):
                                   .filter_by(state='pending')])
     if valid_ids:
         # Create the tagger using default dictionary.
-        logging.info('Loading dictionary: %s', Config.DICTIONARY)
+        logging.info('Loading dictionary: %s', SETTINGS.dictionary)
         # Needs to be global to share as functools.partial does not work.
         global TAGGER #pylint: disable=global-statement
         start = time.time()
-        TAGGER = create_ds_tagger(Config.DICTIONARY)
-        logging.info('Loaded dictionary: %s (in %s)', Config.DICTIONARY,
+        TAGGER = create_ds_tagger(SETTINGS.dictionary)
+        logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
                      timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
         tag(list(valid_ids)[0])
