@@ -255,5 +255,11 @@ def check_tagging(doc_id: UUID, sql: Session, neo: neo4j.Session) -> CheckResult
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    import asyncio
+
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+    config = Config()
+    config.bind = ["0.0.0.0:8000"]
+    config.loglevel = "info"
+    asyncio.run(serve(app, config))

@@ -132,7 +132,7 @@ async def tag_text(tag_request: TagRequst,
     """Use DocuScope to tag the submitted text."""
     tokenizer = RegexTokenizer()
     tokens = tokenizer.tokenize(tag_request.text)
-    tagger = DocuscopeTaggerNeo(
+    tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
         return_included_tags=True, wordclasses=APP.WORDCLASSES, session=rule_db)
     rules, tags = tagger.tag(tokens)
     print(rules)
@@ -156,7 +156,6 @@ async def tag_text(tag_request: TagRequst,
     count_patterns(etr, pats)
     for tag in etr.iterfind(".//*[@data-key]"):
         lat = tag.get('data-key')
-        # [lat] #FIXME in docuscope_tagger_base see FIXME
         categories = LAT_MAP.get(lat, None)
         if categories:
             if categories['cluster'] != 'Other':
@@ -174,8 +173,8 @@ async def tag_text(tag_request: TagRequst,
                 tclasses = Classes(tag.attrib)
                 tclasses |= cats
                 tag.set('data-key', cpath)
-        else:
-            logging.info("No category mapping for %s.", lat)
+        #else:
+        #    logging.info("No category mapping for %s.", lat)
     html_out = etree.tostring(etr)
     type_count = Counter([token.type for token in tokens])
     return DocuScopeDocument(
@@ -267,5 +266,3 @@ if __name__ == "__main__":
     config.bind = ["0.0.0.0:8000"]
     config.loglevel = "info"
     asyncio.run(serve(APP, config))
-    #import uvicorn
-    #uvicorn.run(APP, host="0.0.0.0", port=8000, log_level="info")

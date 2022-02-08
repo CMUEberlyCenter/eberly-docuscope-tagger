@@ -4,21 +4,25 @@
         <meta charset="utf-8"/>
         <title>DocuScope Online Tagger Proof of Concept</title>
         <style>
-            #tag_results {min-height: 4em; border: 1px black;}
+            #tag_results {min-height: 4em; border: 1px solid black;}
         </style>
         <script>
             function submit() {
-                var xhr = new XMLHttpRequest();
+                const results = document.getElementById('tag_results');
+                results.innerHTML = "Tagging...";
+                const xhr = new XMLHttpRequest();
                 xhr.open("POST", '/tag', true);
                 xhr.setRequestHeader('Content-Type', 'application/json');
-                var text = document.getElementById('input_text').value
+                const text = document.getElementById('input_text').value
                 xhr.send(JSON.stringify({text: text}));
                 xhr.onload = function () {
                     var data = JSON.parse(this.responseText);
-                    console.log(typeof(data));
-                    console.log(data)
-                    document.getElementById('tag_results').innerHTML = data.html_content;
+                    results.innerHTML = data.html_content;
                 };
+                xhr.onerror = function (err) {
+                    console.error(err);
+                    results.innerHTML = "ERROR!";
+                }
             }
         </script>
     </head>
@@ -26,7 +30,7 @@
         <header><h1>DocuScope Online Tagger Proof of Concept</h1></header>
         <article>
             <h2>Enter text:</h2>
-            <textarea id="input_text"></textarea>
+            <textarea id="input_text" rows="20" cols="60"></textarea>
             <button onclick="submit()">Submit</button>
         </article>
         <article>

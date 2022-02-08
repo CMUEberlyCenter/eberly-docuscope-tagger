@@ -13,12 +13,16 @@ ujson = "*"
 jsondiff = "*"
 fastapi = "*"
 neo4j = "*"
-uvicorn = "*"
+hypercorn = "*"
+pandas = "*"
+pydantic = {extras = ["dotenv"], version = "*"}
 
 [dev-packages]
 pylint = "*"
 requests = "*"
 bandit = "*"
+autopep8 = "*"
 
 [requires]
 python_version = "3"
+

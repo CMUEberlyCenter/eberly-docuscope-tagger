@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from pydantic.main import BaseModel
+
 from ..base import BaseClass
-from ..tokenizers.tokenizer import Token, TokenType, Tokenizer
+from ..tokenizers.tokenizer import Token, Tokenizer, TokenType
+
 
 @dataclass
 class TaggerRule():
@@ -453,3 +455,10 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         :rtype: dict of TaggerRules and list of TaggerTags
         """
         return {}, []
+
+    def reset(self):
+        """Reset the tagging state."""
+        self.tokens = []
+        self.token_index = 0
+        self.rules = {}
+        self.tags = []

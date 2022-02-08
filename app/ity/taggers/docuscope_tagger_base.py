@@ -255,10 +255,22 @@ class DocuscopeTaggerBase(Tagger):
         else:
             self.token_index = tag.index_end + 1
 
+    def tag_next(self, tokens: list[Token]) -> int:
+        """Tag the next token."""
+        self.reset()
+        self.tokens = tokens
+        while (self.token_index < len(self.tokens) and
+               self.token_index is not None):
+            logging.debug("\nPassing self.tokens[%d] = %s",
+                          self.token_index, self.tokens[self.token_index])
+            self._get_tag()
+            yield self.token_index
+
     def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         # Several helper methods need access to the tokens.
+        self.reset()
         self.tokens = tokens
-        self.token_index: int = 0
+        #self.token_index: int = 0
         # Loop through the tokens and tag them.
         while (self.token_index < len(self.tokens) and
                self.token_index is not None):
@@ -270,9 +282,10 @@ class DocuscopeTaggerBase(Tagger):
         tags = self.tags
         # Clear this instance's tokens, rules, and tags.
         # (This is an attempt to free up memory a bit earlier.)
-        self.tokens = []
-        self.rules = {}
-        self.tags = []
+        self.reset()
+        #self.tokens = []
+        #self.rules = {}
+        #self.tags = []
         # Return the goods.
         return rules, tags
 
