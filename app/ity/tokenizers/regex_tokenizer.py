@@ -5,7 +5,8 @@ __author__ = 'kohlmannj'
 import re
 from html import unescape
 from typing import Optional
-from .tokenizer import Token, TokenType, Tokenizer
+
+from .tokenizer import Token, Tokenizer, TokenType
 
 
 class RegexTokenizer(Tokenizer):

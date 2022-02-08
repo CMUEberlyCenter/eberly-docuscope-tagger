@@ -3,8 +3,12 @@
 
 from itertools import product
 from typing import Optional
+
 from pydantic.main import BaseModel
-from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule, rule_applies_for_tokens
+
+from .docuscope_tagger_base import (DocuscopeTaggerBase, LatRule,
+                                    rule_applies_for_tokens)
+
 
 class DocuscopeDictionary(BaseModel):
     """Model for DocuScope dictionaries."""

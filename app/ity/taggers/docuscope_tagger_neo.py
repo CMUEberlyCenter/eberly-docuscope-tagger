@@ -4,9 +4,13 @@ __author__ = 'mringenb'
 
 from collections import OrderedDict
 from typing import Optional
-from neo4j import Transaction
+
 import neo4j
-from .docuscope_tagger_base import DocuscopeTaggerBase, LatRule, rule_applies_for_tokens
+from neo4j import Transaction
+
+from .docuscope_tagger_base import (DocuscopeTaggerBase, LatRule,
+                                    rule_applies_for_tokens)
+
 
 class DocuscopeTaggerNeo(DocuscopeTaggerBase):
     """
@@ -24,8 +28,10 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
         self.wordclasses = wordclasses or {}
         self._label = (self._label if self._label else "") + ".default"
 
+    #async def get_long_rule(self) -> Optional[LatRule]:
     def get_long_rule(self) -> Optional[LatRule]:
         lookup = [list(t) for t in self.get_next_ds_words_in_range(0, 4)]
+        #rules = await self.session.read_transaction(
         rules = self.session.read_transaction(
             get_lat_rules, lookup)
         tokens = self.get_next_ds_words_in_range(0, len(rules[0]['path'])) if len(rules) > 0 else []
@@ -33,10 +39,13 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
             if rule_applies_for_tokens(r['path'], tokens, offset=2)), None)
         return ds_rule
 
+    #async def get_short_rule(self, token_ds_words: list[str]):
+    #    return await self.session.read_transaction(get_short_rules, token_ds_words)
     def get_short_rule(self, token_ds_words: list[str]):
         return self.session.read_transaction(get_short_rules, token_ds_words)
 
 SEPARATOR = f"{hash('+++MichaelRingenbergSeparator+++')}"
+#async def get_lat_rules(
 def get_lat_rules(
         trx: Transaction,
         tokens: list[tuple[str]]) -> list[LatRule]:
@@ -45,6 +54,7 @@ def get_lat_rules(
     res = CACHE.get(hsh)
     if res is None:
         if len(tokens) >= 4:
+            #result = await trx.run(
             result = trx.run(
                 "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[w4:NEXT]->()-[:NEXT*0..25]->()"
                 "-[:LAT]->(l:Lat) "
@@ -62,6 +72,7 @@ def get_lat_rules(
                 "l.lat as lat",
                 first=tokens[0], second=tokens[1], third=tokens[2], fourth=tokens[3])
         elif len(tokens) == 3:
+            #result = await trx.run(
             result = trx.run(
                 "MATCH p = (w1:Start)-[w2:NEXT]->()-[w3:NEXT]->()-[:LAT]->(l:Lat) "
                 "WHERE w1.word IN $first AND w2.word IN $second AND w3.word IN $third "
@@ -73,6 +84,7 @@ def get_lat_rules(
                 "l.lat as lat",
                 first=tokens[0], second=tokens[1], third=tokens[2])
         else: # bigram fallthrough
+            #result = await trx.run(
             result = trx.run(
                 "MATCH p = (w1:Start)-[w2:NEXT]->()-[:LAT]->(l:Lat) "
                 "WHERE w1.word IN $first AND w2.word IN $second "
@@ -85,20 +97,25 @@ def get_lat_rules(
                          *[path["word"] for path in record["path"]
                            if "word" in path]]}
                for record in result]
+               #async for record in result]
         CACHE.put(hsh, res)
     return res
 
 SHORT_CACHE = {}
+#async def get_short_rules(trx: Transaction,
 def get_short_rules(trx: Transaction,
                     first_tokens: list[str]) -> tuple[str, str]:
     """ Retrieve the unigram LAT rule for the given token. """
     hsh = tuple(first_tokens)
     if hsh not in SHORT_CACHE:
-        result = trx.run(
+        #trans = await trx.run(
+        trans = trx.run(
             "MATCH (s:Start)-[:LAT]->(l:Lat) WHERE s.word IN $first "
             "RETURN s.word AS token, l.lat AS lat "
             "ORDER BY token DESC, lat DESC LIMIT 1",
-            first=first_tokens).single()
+            first=first_tokens)
+        #result = await trans.single()
+        result = trans.single()
         SHORT_CACHE[hsh] = result
     res = SHORT_CACHE.get(hsh, None)
     if res:

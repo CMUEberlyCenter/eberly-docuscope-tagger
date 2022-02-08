@@ -1,27 +1,28 @@
 """Command line interface for DocuScope Tagger.
 Run with --help to see options.
 """
-import cProfile
+#import cProfile
 import argparse
-from contextlib import contextmanager
-from datetime import timedelta
 import logging
-from multiprocessing import Pool
 import time
 import traceback
-from typing import Optional
 import uuid
+from contextlib import contextmanager
+from datetime import timedelta
+from multiprocessing import Pool
+from typing import Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql.expression import update
 
-from default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
-from ds_tagger import create_ds_tagger
 import ds_db
-from docx_to_text import docx_to_text
-from ity.tagger import ItyTagger
+
+from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
+from .docx_to_text import docx_to_text
+from .ds_tagger import create_ds_tagger
+from .ity.tagger import ItyTagger
 
 PARSER = argparse.ArgumentParser(
     prog="docuscope-tagger.sif",
@@ -162,9 +163,9 @@ def run_tagger(args):
         logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
                      timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
-        tag(list(valid_ids)[0])
-        #with Pool() as pool:
-        #    pool.map(tag, valid_ids)
+        #tag(list(valid_ids)[0])
+        with Pool() as pool:
+            pool.map(tag, valid_ids)
     else:
         logging.info('No documents to tag.')
 

@@ -3,12 +3,15 @@ try:
     import ujson as json
 except ImportError:
     import json
+
 import gzip
 import logging
 from pathlib import Path
-from ity.tagger import ds_tagger
-from ity.taggers.docuscope_tagger import DocuscopeDictionary
-from default_settings import SETTINGS
+
+from .default_settings import SETTINGS
+from .ity.tagger import ds_tagger
+from .ity.taggers.docuscope_tagger import DocuscopeDictionary
+
 
 def get_dictionary(dictionary) -> DocuscopeDictionary:
     """Retrieve the given dictionary."""

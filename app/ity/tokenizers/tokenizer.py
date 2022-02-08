@@ -7,7 +7,9 @@ from enum import Enum, unique
 from typing import Optional
 
 from pydantic.main import BaseModel
+
 from ..base import BaseClass
+
 
 # The possible token types.
 @unique

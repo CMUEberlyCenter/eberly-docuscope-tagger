@@ -5,7 +5,9 @@ and then outputs the text with PZPZPZ and two newlines at the end.
 """
 import io
 import re
+
 from docx import Document
+
 
 def docx_to_text(doc_string):
     """Converts a docx string to TOML text.

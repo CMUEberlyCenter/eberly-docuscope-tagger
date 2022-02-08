@@ -1,29 +1,31 @@
 """ The online DocuScope tagger interface. """
 import cProfile
-from datetime import datetime, timezone
 import logging
 import traceback
+from datetime import datetime, timezone
+from difflib import ndiff
 from typing import Dict
 from uuid import UUID
-from difflib import ndiff
 
+import neo4j
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 #from fastapi.middleware.gzip import GZipMiddleware # no large messages returned
 from jsondiff import diff
 from neo4j import GraphDatabase
-import neo4j
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql.expression import update
+
+from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
+from .docx_to_text import docx_to_text
+from .ds_db import Filesystem
+from .ds_tagger import get_wordclasses
+from .ity.tagger import neo_tagger
+
 #from starlette.middeware.cors import CORSMiddleware
 
-from default_settings import SQLALCHEMY_DATABASE_URI, SETTINGS
-from ds_tagger import get_wordclasses
-from ds_db import Filesystem
-from docx_to_text import docx_to_text
-from ity.tagger import neo_tagger
 
 ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE)

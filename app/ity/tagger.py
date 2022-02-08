@@ -1,20 +1,21 @@
 """ Base Ity tagger class with the main method of tag_string. """
+import logging
+import re
 from collections import Counter
 from dataclasses import asdict
 from datetime import datetime
-import logging
-import re
 
 from pydantic.main import BaseModel
 
-from default_settings import SETTINGS
+from ..default_settings import SETTINGS
 from .formatters.formatter import Formatter
 from .formatters.simple_html_formatter import SimpleHTMLFormatter
-from .tokenizers.regex_tokenizer import RegexTokenizer
-from .tokenizers.tokenizer import TokenType, Tokenizer
-from .taggers.tagger import Tagger, TaggerRule
 from .taggers.docuscope_tagger import DocuscopeTagger
 from .taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
+from .taggers.tagger import Tagger, TaggerRule
+from .tokenizers.regex_tokenizer import RegexTokenizer
+from .tokenizers.tokenizer import Tokenizer, TokenType
+
 
 class ItyTaggerResult(BaseModel):
     """Model of Ity tagger results."""
