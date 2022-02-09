@@ -119,7 +119,7 @@ async def tag_text(tag_request: TagRequst,
         word_count=type_count[TokenType.WORD]
     )
 
-APP.mount('/static', StaticFiles(directory="static", html=True))
+APP.mount('/static', StaticFiles(directory="app/static", html=True))
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
