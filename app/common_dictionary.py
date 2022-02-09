@@ -79,20 +79,16 @@ def get_common_dictionary() -> CommonDictionary:
                             detail="Empty common dictionary")
     return dscommon
 
-COMMON_DICITONARY = get_common_dictionary()
-
-def common_frame() -> DataFrame:
+def get_common_frame() -> DataFrame:
     """ Compose the DataFrame by reading the common dictionary file. """
-    #dscommon = get_common_dictionary()
+    common_dictionary = get_common_dictionary()
     dsc = [{"category": cat.name or cat.label,
             "category_label": cat.label,
             "subcategory": sub.name or sub.label,
             "subcategory_label": sub.label,
             "cluster": clust.name,
             "cluster_label": clust.label}
-           for cat in COMMON_DICITONARY.categories
+           for cat in common_dictionary.categories
            for sub in cat.subcategories
            for clust in sub.clusters]
     return DataFrame(dsc, dtype="string")
-
-COMMON_DICTIONARY_FRAME = common_frame()

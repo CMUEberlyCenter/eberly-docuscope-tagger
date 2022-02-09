@@ -12,12 +12,18 @@ COPY ./Pipfile.lock .
 RUN PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy
 
 FROM base AS runtime
-LABEL description="DocuScope Tagger"
+ARG BRANCH="master"
+ARG COMMIT=""
+ARG TAG="latest"
+ARG USER=""
+LABEL branch=${BRANCH}
+LABEL commit=${COMMIT}
+LABEL maintainer=${USER}
+LABEL version=${TAG}
+LABEL description="DocuScope Tagger Service"
 COPY --from=deps /.venv /.venv
 ENV PATH="/.venv/bin:$PATH"
 RUN useradd --create-home appuser
 WORKDIR /home/appuser
 COPY ./app ./app
-CMD ["hypercorn", "app.main:app", "--bind", "0.0.0.0:80"]
-#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
-#CMD ["uvicorn", "app.main:app", "--proxy-headers", "--host", "0.0.0.0", "--port", "80"]
+CMD ["hypercorn", "app.tag:APP", "--bind", "0.0.0.0:80"]

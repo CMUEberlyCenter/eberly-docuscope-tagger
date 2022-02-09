@@ -11,7 +11,6 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 #from uuid import UUID, uuid1
 from lxml import etree  # nosec
-from lxml.html import Classes
 from neo4j import Driver, GraphDatabase, Session
 from pydantic import BaseModel, constr
 
@@ -22,9 +21,8 @@ from .ity.formatters.simple_html_formatter import SimpleHTMLFormatter
 from .ity.taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
 from .ity.tokenizers.regex_tokenizer import RegexTokenizer
 from .ity.tokenizers.tokenizer import TokenType
-from .lat_frame import LAT_MAP
+from .lat_frame import generate_tagged_html
 
-#from sse_starlette.sse import EventSourceResponse
 
 APP = FastAPI(
     title="DocuScope Online Tagger",
@@ -36,20 +34,21 @@ APP = FastAPI(
     }
 )
 
-DRIVER: Driver = None # This should be process shared
+DRIVER: Driver = None
+WORDCLASSES: dict[str, list[str]] = None
 
 
 @APP.on_event("startup")
 async def startup_event():
     """Initialize shared static data."""
-    global DRIVER  # pylint: disable=global-statement
+    global DRIVER, WORDCLASSES  # pylint: disable=global-statement
     # DRIVER = AsyncGraphDatabase.driver(
     DRIVER = GraphDatabase.driver(
         SETTINGS.neo4j_uri,
         # pylint: disable=no-member
         auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password.get_secret_value())
     )
-    APP.WORDCLASSES = get_wordclasses() # application shared
+    WORDCLASSES = get_wordclasses()
 
 
 @APP.on_event("shutdown")
@@ -81,44 +80,6 @@ class DocuScopeDocument(BaseModel):
     html_content: str = ""
     patterns: List[CategoryPatternData]
 
-# class DocuScopeTagResponse(BaseModel):
-#    """"""
-#    id: str = ""
-#    link: str
-
-# class State(Enum):
-#    RECIEVED = auto()
-#    TOKENIZING = auto()
-#    PROCESSING = auto()
-#    FORMATTING = auto()
-#    DONE = auto()
-#    ERROR = auto()
-
-# class Status(BaseModel):
-#    event: State = State.RECIEVED
-#    processed: int = 0
-#    data: DocuScopeDocument = ...
-
-
-# async def status_generator(uuid: UUID, request: Request, redis: aioredis.Redis):
-#    while True:
-#        if await request.is_disconnected():
-#            logging.info("client disconnected!")
-#            break
-#        state = await redis.xread([uuid])
-#        yield state
-
-# @APP.get("/tag/{uuid}/status/", response_model=Status)
-# async def get_status(uuid: UUID, request: Request,
-#             redis: aioredis.Redis = Depends(redis_session)):
-#    gen = status_generator(uuid, request, redis)
-#    return EventSourceResponse(gen)
-#
-#    return await REDIS.json().get(uuid)
-
-# @APP.get("/tag/{uuid}/results/")
-# async def get_results(uuid: UUID) -> DocuScopeDocument:
-#    return await REDIS.json().get(uuid)
 
 class TagRequst(BaseModel):
     """Schema for tagging requests. """
@@ -133,126 +94,30 @@ async def tag_text(tag_request: TagRequst,
     text = escape(tag_request.text)
     tokens = tokenizer.tokenize(text)
     tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
-        return_included_tags=True, wordclasses=APP.WORDCLASSES, session=rule_db)
+        return_included_tags=True, wordclasses=WORDCLASSES, session=rule_db)
     rules, tags = tagger.tag(tokens)
-    print(rules)
-    print(tags)
     formatter = SimpleHTMLFormatter()
     output = formatter.format(
-        tags=(rules, tags), tokens=tokens, text_str=tag_request.text)
-    html_content = re.sub(r'(\n|\s)+', ' ', output)
-    print(html_content)
-    html = "<body><p>" + \
+        tags=(rules, tags), tokens=tokens, text_str=text)
+    output = re.sub(r'(\n|\s)+', ' ', output)
+    output = "<body><p>" + \
         re.sub(r'<span[^>]*>\s*PZPZPZ\s*</span>',
-               '</p><p>', html_content) + "</p></body>"
+               '</p><p>', output) + "</p></body>"
     parser = etree.XMLParser(
         load_dtd=False, no_network=True, remove_pis=True, resolve_entities=False)
     try:
-        etr = etree.fromstring(html, parser=parser)  # nosec
+        etr = etree.fromstring(output, parser=parser)  # nosec
     except Exception as exp:
-        logging.error(html)
+        logging.error(output)
         raise exp
     pats = defaultdict(Counter)
     count_patterns(etr, pats)
-    for tag in etr.iterfind(".//*[@data-key]"):
-        lat = tag.get('data-key')
-        categories = LAT_MAP.get(lat, None)
-        if categories:
-            if categories['cluster'] != 'Other':
-                cats = [categories['category'],
-                        categories['subcategory'],
-                        categories['cluster']]
-                cpath = " > ".join([categories['category_label'],
-                                    categories['subcategory_label'],
-                                    categories['cluster_label']])
-                sup = etree.SubElement(tag, "sup")
-                sup.text = "{" + cpath + "}"
-                sclasses = Classes(sup.attrib)
-                sclasses |= cats
-                sclasses |= ['d_none', 'cluster_id']
-                tclasses = Classes(tag.attrib)
-                tclasses |= cats
-                tag.set('data-key', cpath)
-        #else:
-        #    logging.info("No category mapping for %s.", lat)
-    html_out = etree.tostring(etr)
     type_count = Counter([token.type for token in tokens])
     return DocuScopeDocument(
-        html_content=html_out,
+        html_content=generate_tagged_html(etr),
         patterns=sort_patterns(pats),
         word_count=type_count[TokenType.WORD]
     )
-    #tagging = tag_document(tag_request.text, request, rule_db)
-    # return EventSourceResponse(tagging)
-
-# async def tag_document(text: str, request: Request, rule_db: Session) -> Status:
-#    yield Status(event=State.RECIEVED)
-#    yield Status(event=State.TOKENIZING)
-#    tokenizer = RegexTokenizer()
-#    tokens = tokenizer.tokenize(text)
-#
-#    tagger = DocuscopeTaggerNeo(return_included_tags=True,
-#             wordclasses=WORDCLASSES, session=rule_db)
-#    tagger_gen = tagger.tag_next(tokens)
-#    tot_tokens = len(tokens)
-#    tenpc = tot_tokens // 10
-#    last_indx = 0
-#    while True:
-#        if await request.is_disconnected():
-#            logging.info("client disconnected!")
-#            return
-#        try:
-#            indx = next(tagger_gen)
-#        except StopIteration:
-#            break
-#        if indx - last_indx >= tenpc:
-#            last_indx = indx
-#            yield Status(event=State.PROCESSING, processed=tot_tokens // indx)
-#    yield Status(event=State.FORMATTING, processed=100)
-#    formatter = SimpleHTMLFormatter()
-#    output = formatter.format(tags = (tagger.rules, tagger.tags),
-#                    tokens=tokens, text_str=text)
-#    html_content = re.sub(r'(\n|\s)+', ' ', output)
-#    html = "<body><p>" + re.sub(r'<span[^>]*>\s*PZPZPZ\s*</span>', '</p><p>', html_content)
-#            + "</p></body>"
-#    parser = etree.XMLParser(load_dtd=False, no_network=True,
-#             remove_pis=True, resolve_entities=False)
-#    try:
-#        etr = etree.fromstring(html, parser=parser) # nosec
-#    except Exception as exp:
-#        logging.error(html)
-#        raise exp
-#    pats = defaultdict(Counter)
-#    count_patterns(etr, pats)
-#    for tag in etr.iterfind(".//*[@data-key]"):
-#        lat = tag.get('data-key')
-#        categories = LAT_MAP[lat]
-#        if categories:
-#            if categories['cluster'] != 'Other':
-#                cats = [categories['category'],
-#                        categories['subcategory'],
-#                        categories['cluster']]
-#                cpath = " > ".join([categories['category_label'],
-#                                    categories['subcategory_label'],
-#                                    categories['cluster_label']])
-#                sup = etree.SubElement(tag, "sup")
-#                sup.text = "{" + cpath + "}"
-#                sclasses = Classes(sup.attrib)
-#                sclasses |= cats
-#                sclasses |= ['d_none', 'cluster_id']
-#                tclasses = Classes(tag.attrib)
-#                tclasses |= cats
-#                tag.set('data-key', cpath)
-#        else:
-#            logging.info("No category mapping for %s.", lat)
-#    html_out = etree.tostring(etr)
-#    type_count = Counter([token.type for token in tokens])
-#    yield State(event=State.DONE, processed=100,
-#                data=DocuScopeDocument(
-#                    html_content=html_out,
-#                    patterns=sort_patterns(pats),
-#                    word_count=type_count[TokenType.WORD]
-#                ))
 
 APP.mount('/static', StaticFiles(directory="static", html=True))
 

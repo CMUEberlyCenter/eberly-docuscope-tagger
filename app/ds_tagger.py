@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 
 from .default_settings import SETTINGS
-from .ity.tagger import ds_tagger
+from .ity.tagger import ItyTagger, ds_tagger
 from .ity.taggers.docuscope_tagger import DocuscopeDictionary
 
 
@@ -42,7 +42,7 @@ def get_wordclasses() -> dict[str, list[str]]:
         logging.error("No wordclasses in %s", wcs)
     return data
 
-def create_ds_tagger(dictionary: str):
+def create_ds_tagger(dictionary: str) -> ItyTagger:
     """Create DocuScope Ity tagger using the specified dictionary."""
     dictionary = dictionary or SETTINGS.dictionary
     ds_dict = get_dictionary(dictionary)
