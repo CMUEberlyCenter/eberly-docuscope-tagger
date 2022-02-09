@@ -3,6 +3,7 @@
 import logging
 import re
 from collections import Counter, defaultdict
+from html import escape
 from typing import List
 
 #import aioredis
@@ -35,8 +36,7 @@ APP = FastAPI(
     }
 )
 
-DRIVER: Driver = None
-#WORDCLASSES = None
+DRIVER: Driver = None # This should be process shared
 
 
 @APP.on_event("startup")
@@ -49,8 +49,7 @@ async def startup_event():
         # pylint: disable=no-member
         auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password.get_secret_value())
     )
-    #global WORDCLASSES
-    APP.WORDCLASSES = get_wordclasses()
+    APP.WORDCLASSES = get_wordclasses() # application shared
 
 
 @APP.on_event("shutdown")
@@ -131,7 +130,8 @@ async def tag_text(tag_request: TagRequst,
                    rule_db: Session = Depends(rule_session)) -> DocuScopeDocument:
     """Use DocuScope to tag the submitted text."""
     tokenizer = RegexTokenizer()
-    tokens = tokenizer.tokenize(tag_request.text)
+    text = escape(tag_request.text)
+    tokens = tokenizer.tokenize(text)
     tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
         return_included_tags=True, wordclasses=APP.WORDCLASSES, session=rule_db)
     rules, tags = tagger.tag(tokens)
