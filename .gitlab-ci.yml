@@ -29,7 +29,7 @@ pylint:
   allow_failure: true
 
 build:
-  state: build
+  stage: build
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username "$CI_REGISTRY_USER" --password-stdin
   script:
