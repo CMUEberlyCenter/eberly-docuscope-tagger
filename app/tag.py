@@ -1,5 +1,6 @@
 """ On demand DocuScope tagger interface. """
 #from enum import Enum, auto
+from datetime import datetime, timedelta
 import logging
 import re
 from collections import Counter, defaultdict
@@ -79,6 +80,7 @@ class DocuScopeDocument(BaseModel):
     word_count: int = 0
     html_content: str = ""
     patterns: List[CategoryPatternData]
+    tagging_time: timedelta
 
 
 class TagRequst(BaseModel):
@@ -90,6 +92,7 @@ class TagRequst(BaseModel):
 async def tag_text(tag_request: TagRequst,
                    rule_db: Session = Depends(rule_session)) -> DocuScopeDocument:
     """Use DocuScope to tag the submitted text."""
+    start_time = datetime.now()
     tokenizer = RegexTokenizer()
     text = escape(tag_request.text)
     tokens = tokenizer.tokenize(text)
@@ -116,7 +119,9 @@ async def tag_text(tag_request: TagRequst,
     return DocuScopeDocument(
         html_content=generate_tagged_html(etr),
         patterns=sort_patterns(pats),
-        word_count=type_count[TokenType.WORD]
+        word_count=type_count[TokenType.WORD],
+        tagging_time=datetime.now() - start_time
+        # pandas.Timedelta(datetime.now()-start_time).isoformat()
     )
 
 APP.mount('/static', StaticFiles(directory="app/static", html=True))

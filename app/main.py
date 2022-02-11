@@ -1,10 +1,13 @@
 """ The online DocuScope tagger interface. """
 import cProfile
 import logging
+import re
 import traceback
+from collections import defaultdict
 from datetime import datetime, timezone
 from difflib import ndiff
-from typing import Dict
+from typing import Counter, Dict
+from urllib.request import Request
 from uuid import UUID
 
 import neo4j
@@ -12,6 +15,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 #from fastapi.middleware.gzip import GZipMiddleware # no large messages returned
 from jsondiff import diff
+from lxml import etree
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 from sqlalchemy import create_engine
@@ -22,9 +26,14 @@ from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
 from .ds_db import Filesystem
 from .ds_tagger import get_wordclasses
-from .ity.tagger import neo_tagger
+from .ity.formatters.simple_html_formatter import SimpleHTMLFormatter
+from .ity.tagger import ItyTaggerResult, neo_tagger, tag_json
+from .ity.taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
+from .ity.tokenizers.regex_tokenizer import RegexTokenizer
+from .ity.tokenizers.tokenizer import TokenType
 
 #from starlette.middeware.cors import CORSMiddleware
+#from sse_starlette.sse import EventSourceResponse 
 
 
 ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
@@ -56,11 +65,10 @@ async def startup_event():
     """Initialize some important static data on startup.
     Loads the _wordclasses json file for use by tagger.
     Initializes database driver."""
-    global DRIVER # pylint: disable=global-statement
+    global DRIVER, WORDCLASSES # pylint: disable=global-statement
     DRIVER = GraphDatabase.driver(
         SETTINGS.neo4j_uri,
         auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password))
-    global WORDCLASSES # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()
 
 @app.on_event("shutdown")
@@ -89,7 +97,78 @@ def neo_session():
     finally:
         my_session.close()
 
-def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session) -> None:
+class Message(BaseModel):
+    """Model for tag responses."""
+    #pylint: disable=too-few-public-methods
+    message: str
+    state: str
+
+async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j.Session):
+    """"""
+    start_time = datetime.now()
+    (doc_content, name) = sql.query(Filesystem.content, Filesystem.name).filter(Filesystem.id == doc_id).first()
+    if doc_content:
+        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(state='submitted'))
+        sql.commit()
+        yield Message(event="submitted", message="0")
+        try:
+            if name.endswith(".docx"):
+                doc_content = docx_to_text(doc_content)
+            tokenizer = RegexTokenizer()
+            tokens = tokenizer.tokenize(doc_content)
+            tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
+                                        return_included_tags=True, wordclasses=WORDCLASSES, session=neo)
+            tagger_gen = tagger.tag_next(tokens)
+            tot_tokens = len(tokens)
+            tenpc = tot_tokens // 10
+            last_indx = 0
+            while True:
+                if await request.is_disconnected():
+                    logging.info("Client Disconnected!")
+                    return
+                try:
+                    indx = next(tagger_gen)
+                except StopIteration:
+                    break
+                if indx - last_indx >= tenpc:
+                    last_indx = indx
+                    yield Message(event = 'processing', message=f"{indx * 100 // tot_tokens}")
+            yield Message(event='processing', message='100')
+            output = SimpleHTMLFormatter().format(tags = (tagger.rules, tagger.tags), tokens=tokens, text_str=doc_content)
+        except Exception as exc:
+            logging.error("Error while tagging %s", doc_id)
+            traceback.print_exc()
+            sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+                state = 'error',
+                processed = {'error': f'{exc}', 'trace': traceback.format_exc(), 'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(), 'tagging_time': 0}
+            ))
+            raise exc
+        type_count = Counter([token.type for token in tokens])
+        not_excluded = set(TokenType - set(tokenizer.excluded_token_types))
+        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+            state = 'tagged',
+            processsed = tag_json(ItyTaggerResult(
+                text_contents=doc_content,
+                format_output=output,
+                tag_dict=tagger.rules,
+                num_tokens=len(tokens),
+                num_word_tokens=type_count[TokenType.WORD],
+                num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
+                num_included_tokens=sum([type_count[itype] for itype in not_excluded]),
+                num_excluded_tokens=sum([type_count[etype] for etype in tokenizer.excluded_token_types]),
+                tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tagger.tags]
+            ))
+        ))
+        yield Message(event="done", message=str(datetime.now() - start_time))
+    else:
+        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+            state = 'error',
+            processed = {'error': 'No file data to process.', 'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(), 'tagging_time': 0}
+        ))
+        yield Message(event="error", message=f"No content in document: {name} ({doc_id})!")
+
+
+def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session):
     """ Tag the document of the given id. """
     state = "error"
     processed = {'error': 'No file data to process.'}
@@ -122,24 +201,20 @@ def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session) -> None:
             processed['error'] = f'{exc}'
             processed['trace'] = traceback.format_exc()
             state = 'error'
+            #raise exc
     processed['date_tagged'] = datetime.now(timezone.utc).astimezone().isoformat()
     processed['tagging_time'] = str(datetime.now() - start_time)
     sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
         state = state,
         processed = processed
     ))
-    #sql.query(Filesystem).filter(Filesystem.id == doc_id).update(
-    #    {"state": state, "processed": processed})
+    sql.commit()
     logging.info("Finished tagging %s (%s)", doc_id, state)
 
 
-class Message(BaseModel):
-    """Model for tag responses."""
-    #pylint: disable=too-few-public-methods
-    message: str
-
 @app.get("/tag/{uuid}", response_model=Message)
 async def tag(uuid: UUID,
+              request: Request,
               background_tasks: BackgroundTasks,
               sql: Session = Depends(session),
               neo: neo4j.Session = Depends(neo_session)):
@@ -154,12 +229,14 @@ async def tag(uuid: UUID,
     (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
     if state == 'pending':
         # TODO: check for too many submitted
+        #tagging = atag_document(uuid, request, sql, neo)
+        #return EventSourceResponse(tagging)
         background_tasks.add_task(tag_document, uuid, sql, neo)
-        return {"message": f"Tagging of {uuid} started."}
+        return {"message": f"Tagging of {uuid} started.", "state": state}
     if state == 'submitted':
-        return {"message": f"{uuid} already submitted."}
+        return {"message": f"{uuid} already submitted.", "state": state}
     if state == 'tagged':
-        return {"message": f"{uuid} already tagged."}
+        return {"message": f"{uuid} already tagged.", "state": state}
     if state == 'error':
         raise HTTPException(detail=f"Tagging failed for {uuid}",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
