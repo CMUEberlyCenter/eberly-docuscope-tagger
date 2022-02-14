@@ -1,21 +1,16 @@
 """ The online DocuScope tagger interface. """
 import cProfile
 import logging
-import re
 import traceback
-from collections import defaultdict
 from datetime import datetime, timezone
 from difflib import ndiff
 from typing import Counter, Dict
-from urllib.request import Request
 from uuid import UUID
 
 import neo4j
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-#from fastapi.middleware.gzip import GZipMiddleware # no large messages returned
 from jsondiff import diff
-from lxml import etree
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 from sqlalchemy import create_engine
@@ -33,7 +28,7 @@ from .ity.tokenizers.regex_tokenizer import RegexTokenizer
 from .ity.tokenizers.tokenizer import TokenType
 
 #from starlette.middeware.cors import CORSMiddleware
-#from sse_starlette.sse import EventSourceResponse 
+from sse_starlette.sse import EventSourceResponse 
 
 
 ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
@@ -68,7 +63,7 @@ async def startup_event():
     global DRIVER, WORDCLASSES # pylint: disable=global-statement
     DRIVER = GraphDatabase.driver(
         SETTINGS.neo4j_uri,
-        auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password))
+        auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password.get_secret_value()))
     WORDCLASSES = get_wordclasses()
 
 @app.on_event("shutdown")
@@ -101,7 +96,7 @@ class Message(BaseModel):
     """Model for tag responses."""
     #pylint: disable=too-few-public-methods
     message: str
-    state: str
+    event: str
 
 async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j.Session):
     """"""
@@ -144,10 +139,10 @@ async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j
             ))
             raise exc
         type_count = Counter([token.type for token in tokens])
-        not_excluded = set(TokenType - set(tokenizer.excluded_token_types))
+        not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
         sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
             state = 'tagged',
-            processsed = tag_json(ItyTaggerResult(
+            processed = tag_json(ItyTaggerResult(
                 text_contents=doc_content,
                 format_output=output,
                 tag_dict=tagger.rules,
@@ -157,7 +152,7 @@ async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j
                 num_included_tokens=sum([type_count[itype] for itype in not_excluded]),
                 num_excluded_tokens=sum([type_count[etype] for etype in tokenizer.excluded_token_types]),
                 tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tagger.tags]
-            ))
+            )).dict()
         ))
         yield Message(event="done", message=str(datetime.now() - start_time))
     else:
@@ -215,7 +210,7 @@ def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session):
 @app.get("/tag/{uuid}", response_model=Message)
 async def tag(uuid: UUID,
               request: Request,
-              background_tasks: BackgroundTasks,
+              #background_tasks: BackgroundTasks,
               sql: Session = Depends(session),
               neo: neo4j.Session = Depends(neo_session)):
     """ Check the document status and start the tagging if appropriate. """
@@ -229,14 +224,14 @@ async def tag(uuid: UUID,
     (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
     if state == 'pending':
         # TODO: check for too many submitted
-        #tagging = atag_document(uuid, request, sql, neo)
-        #return EventSourceResponse(tagging)
-        background_tasks.add_task(tag_document, uuid, sql, neo)
-        return {"message": f"Tagging of {uuid} started.", "state": state}
+        tagging = atag_document(uuid, request, sql, neo)
+        return EventSourceResponse(tagging)
+        #background_tasks.add_task(tag_document, uuid, sql, neo)
+        #return {"message": f"Tagging of {uuid} started.", "state": state}
     if state == 'submitted':
-        return {"message": f"{uuid} already submitted.", "state": state}
+        return {"message": f"{uuid} already submitted.", "event": 'state'}
     if state == 'tagged':
-        return {"message": f"{uuid} already tagged.", "state": state}
+        return {"message": f"{uuid} already tagged.", "event": 'state'}
     if state == 'error':
         raise HTTPException(detail=f"Tagging failed for {uuid}",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

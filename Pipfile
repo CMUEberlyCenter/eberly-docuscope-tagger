@@ -16,6 +16,7 @@ neo4j = "*"
 hypercorn = "*"
 pandas = "*"
 pydantic = {extras = ["dotenv"], version = "*"}
+sse-starlette = "*"
 
 [dev-packages]
 pylint = "*"
@@ -25,4 +26,3 @@ autopep8 = "*"
 
 [requires]
 python_version = "3"
-
