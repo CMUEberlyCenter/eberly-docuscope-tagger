@@ -13,9 +13,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from jsondiff import diff
 from neo4j import GraphDatabase
 from pydantic import BaseModel
-from sqlalchemy import create_engine
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.sql.expression import update
+#from starlette.middeware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 
 from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
@@ -27,12 +29,8 @@ from .ity.taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
 from .ity.tokenizers.regex_tokenizer import RegexTokenizer
 from .ity.tokenizers.tokenizer import TokenType
 
-#from starlette.middeware.cors import CORSMiddleware
-from sse_starlette.sse import EventSourceResponse 
-
-
-ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
-SESSION = sessionmaker(bind=ENGINE)
+ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
+SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False, class_=AsyncSession)
 DRIVER: neo4j.Driver = None
 WORDCLASSES = None
 TAGGER = None
@@ -67,22 +65,24 @@ async def startup_event():
     WORDCLASSES = get_wordclasses()
 
 @app.on_event("shutdown")
-def shutdown_event():
+async def shutdown_event():
     """Shutdown event handler.  Closes database connection cleanly."""
     if DRIVER is not None:
         DRIVER.close()
+    if ENGINE is not None:
+        await ENGINE.dispose()
 
-def session():
+async def session():
     """Establish a scoped session for accessing the database."""
-    my_session: Session = SESSION()
+    my_session: AsyncSession = SESSION()
     try:
         yield my_session
-        my_session.commit()
+        await my_session.commit()
     except:
-        my_session.rollback()
+        await my_session.rollback()
         raise
     finally:
-        my_session.close()
+        await my_session.close()
 
 def neo_session():
     """Establish a scoped session for accessing the neo4j database."""
@@ -98,13 +98,14 @@ class Message(BaseModel):
     message: str
     event: str
 
-async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j.Session):
+async def atag_document(doc_id: UUID, request: Request, sql: AsyncSession, neo: neo4j.Session):
     """"""
     start_time = datetime.now()
-    (doc_content, name) = sql.query(Filesystem.content, Filesystem.name).filter(Filesystem.id == doc_id).first()
+    query = await sql.execute(select(Filesystem.content, Filesystem.name).where(Filesystem.id == doc_id))
+    (doc_content, name) = query.first()
     if doc_content:
-        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(state='submitted'))
-        sql.commit()
+        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(state='submitted'))
+        await sql.commit()
         yield Message(event="submitted", message="0")
         try:
             if name.endswith(".docx"):
@@ -133,14 +134,14 @@ async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j
         except Exception as exc:
             logging.error("Error while tagging %s", doc_id)
             traceback.print_exc()
-            sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+            await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
                 state = 'error',
                 processed = {'error': f'{exc}', 'trace': traceback.format_exc(), 'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(), 'tagging_time': 0}
             ))
             raise exc
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
-        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
             state = 'tagged',
             processed = tag_json(ItyTaggerResult(
                 text_contents=doc_content,
@@ -156,62 +157,18 @@ async def atag_document(doc_id: UUID, request: Request, sql: Session, neo: neo4j
         ))
         yield Message(event="done", message=str(datetime.now() - start_time))
     else:
-        sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
             state = 'error',
             processed = {'error': 'No file data to process.', 'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(), 'tagging_time': 0}
         ))
         yield Message(event="error", message=f"No content in document: {name} ({doc_id})!")
 
 
-def tag_document(doc_id: UUID, sql: Session, neo: neo4j.Session):
-    """ Tag the document of the given id. """
-    state = "error"
-    processed = {'error': 'No file data to process.'}
-    start_time = datetime.now()
-    (doc_content, name) = sql.query(
-        Filesystem.content,
-        Filesystem.name).filter(Filesystem.id == doc_id).first()
-    if doc_content:
-        sql.execute(update(Filesystem).where(
-            Filesystem.id == doc_id).values(
-            state='submitted'))
-        sql.commit()
-        try:
-            # convert docx files.
-            if name.endswith(".docx"):
-                doc_content = docx_to_text(doc_content)
-            # Should no longer need as shared prepopulated tagger.
-            tagger = neo_tagger(WORDCLASSES, neo)
-            processed = tagger.tag(doc_content).dict()
-            if processed['ds_num_word_tokens'] == 0:
-                state = 'error'
-                processed['error'] = 'Document failed to parse: no word tokens found.'
-                logging.error("Invalid parsing results %s: no word tokens.", doc_id)
-            else:
-                state = "tagged"
-                logging.info("Successfully tagged %s", doc_id)
-        except Exception as exc: #pylint: disable=W0703
-            logging.error("Error while tagging %s", doc_id)
-            traceback.print_exc()
-            processed['error'] = f'{exc}'
-            processed['trace'] = traceback.format_exc()
-            state = 'error'
-            #raise exc
-    processed['date_tagged'] = datetime.now(timezone.utc).astimezone().isoformat()
-    processed['tagging_time'] = str(datetime.now() - start_time)
-    sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
-        state = state,
-        processed = processed
-    ))
-    sql.commit()
-    logging.info("Finished tagging %s (%s)", doc_id, state)
-
-
 @app.get("/tag/{uuid}", response_model=Message)
 async def tag(uuid: UUID,
               request: Request,
               #background_tasks: BackgroundTasks,
-              sql: Session = Depends(session),
+              sql: AsyncSession = Depends(session),
               neo: neo4j.Session = Depends(neo_session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
@@ -221,7 +178,8 @@ async def tag(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
+    result = await sql.execute(select(Filesystem.state).where(Filesystem.id == uuid))
+    (state,) = result.first()
     if state == 'pending':
         # TODO: check for too many submitted
         tagging = atag_document(uuid, request, sql, neo)
@@ -250,7 +208,7 @@ class CheckResults(BaseModel):
 
 @app.get("/test/{uuid}", response_model=CheckResults)
 async def test_tagging(uuid: UUID,
-                       sql: Session = Depends(session),
+                       sql: AsyncSession = Depends(session),
                        neo: neo4j.Session = Depends(neo_session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
@@ -260,7 +218,8 @@ async def test_tagging(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    (state,) = sql.query(Filesystem.state).filter(Filesystem.id == uuid).first()
+    query = await sql.execute(select(Filesystem.state).where(Filesystem.id == uuid))
+    (state,) = query.first()
     if state in ['pending', 'submitted']:
         return {"message": f"{uuid} is not yet tagged."}
     if state == 'tagged':
@@ -279,10 +238,11 @@ async def test_tagging(uuid: UUID,
 @app.get("/profile/{uuid}")
 async def profile_tagging(
         uuid: UUID,
-        sql: Session = Depends(session),
+        sql: AsyncSession = Depends(session),
         neo: neo4j.Session = Depends(neo_session)):
     """Profile tagging and dump to file."""
-    (doc_content,) = sql.query(Filesystem.content).filter(Filesystem.id == uuid).first()
+    query = await sql.execute(select(Filesystem.content).where(Filesystem.id == uuid))
+    (doc_content,) = query.first()
     tagger = neo_tagger(WORDCLASSES, neo)
     content = docx_to_text(doc_content)
     with cProfile.Profile() as prof:
@@ -290,18 +250,17 @@ async def profile_tagging(
     prof.dump_stats('mprof.stat')
 
 @app.post('/batchtest', response_model=Dict[UUID, CheckResults])
-def test_corpus(
+async def test_corpus(
         corpus: list[UUID],
-        sql: Session = Depends(session),
+        sql: AsyncSession = Depends(session),
         neo: neo4j.Session = Depends(neo_session)):
     """Perform tagging check on multiple documents."""
-    return {uuid: check_tagging(uuid, sql, neo) for uuid in corpus}
+    return {uuid: await check_tagging(uuid, sql, neo) for uuid in corpus}
 
-def check_tagging(doc_id: UUID, sql: Session, neo: neo4j.Session) -> CheckResults:
+async def check_tagging(doc_id: UUID, sql: AsyncSession, neo: neo4j.Session) -> CheckResults:
     """Perform tagging with neo4j tagger and check against the database. """
-    (doc_content, doc_processed) = sql.query(Filesystem.content,
-                                            Filesystem.processed).filter(
-                                                Filesystem.id == doc_id).first()
+    query = await sql.execute(select(Filesystem.content, Filesystem.processed).where(Filesystem.id == doc_id))
+    (doc_content, doc_processed) = query.first()
     if doc_content:
         # tag document
         tagger = neo_tagger(WORDCLASSES, neo)

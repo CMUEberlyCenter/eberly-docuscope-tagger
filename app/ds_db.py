@@ -4,8 +4,7 @@ import uuid
 from sqlalchemy import (JSON, TIMESTAMP, VARBINARY, Boolean, Column, Enum,
                         ForeignKey, Integer, LargeBinary, SmallInteger, String,
                         exists)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy.orm import Session, declarative_base, relationship
 from sqlalchemy.types import TypeDecorator
 
 BASE = declarative_base()

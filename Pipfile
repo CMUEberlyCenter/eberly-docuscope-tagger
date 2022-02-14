@@ -6,8 +6,7 @@ name = "pypi"
 [packages]
 python-docx = "*"
 Jinja2 = "*"
-SQLAlchemy = "*"
-mysqlclient = "*"
+SQLAlchemy = {extras = ["asyncio"], version = "*"}
 email-validator = "*"
 ujson = "*"
 jsondiff = "*"
@@ -17,6 +16,7 @@ hypercorn = "*"
 pandas = "*"
 pydantic = {extras = ["dotenv"], version = "*"}
 sse-starlette = "*"
+aiomysql = "*"
 
 [dev-packages]
 pylint = "*"
