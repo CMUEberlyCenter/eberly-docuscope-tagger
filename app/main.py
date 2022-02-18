@@ -15,7 +15,7 @@ from neo4j import GraphDatabase
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 #from starlette.middeware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
