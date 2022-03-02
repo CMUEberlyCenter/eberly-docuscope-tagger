@@ -96,7 +96,7 @@ class DocuscopeTaggerBase(Tagger):
         """Return the longest matching LAT rule that is at least lenght two."""
         return None
 
-    def _get_long_rule_tag(self) -> tuple[Optional[TaggerRule], Optional[TaggerTag]]:
+    async def _get_long_rule_tag(self) -> tuple[Optional[TaggerRule], Optional[TaggerTag]]:
         # Is this token's type one that is excluded?
         if self.tokens[self.token_index].type in self.excluded_token_types:
             # Early return, then.
@@ -110,13 +110,17 @@ class DocuscopeTaggerBase(Tagger):
         # This algorithm below is based on Mike Gleicher's DocuscopeJr tagger.
         # Modified to use a Neo4J database for lookups (Michael Ringenberg)
 
-        ds_rule = self.get_long_rule()
+        ds_rule = await self.get_long_rule()
 
         if ds_rule is not None:
             rule = TaggerRule()
             tag = TaggerTag()
             rule.name = ds_rule['lat']
-            rule.full_name = ".".join([self.full_label, rule.name])
+            try:
+                rule.full_name = ".".join([self.full_label, rule.name])
+            except Exception as e:
+                print(ds_rule)
+                raise e
             last_token_index = self._get_nth_next_included_token_index(
                 offset=len(ds_rule['path']) - 1)
             tag.rules=[(rule.full_name, ds_rule['path'])]
@@ -161,7 +165,7 @@ class DocuscopeTaggerBase(Tagger):
         """For a list of token words, lookup a matching short rule."""
         return None, None
 
-    def _get_short_rule_tag(self) -> tuple[TaggerRule, TaggerTag]:
+    async def _get_short_rule_tag(self) -> tuple[TaggerRule, TaggerTag]:
         """ Get an applicable unigram rule. """
         rule = TaggerRule()
         # Some data for the current token.
@@ -180,7 +184,7 @@ class DocuscopeTaggerBase(Tagger):
         matching_ds_word = None
         if token.type not in self.excluded_token_types:
             # Try to find a short rule for one of this token's ds_words.
-            lat, matching_ds_word = self.get_short_rule(token_ds_words)
+            lat, matching_ds_word = await self.get_short_rule(token_ds_words)
             rule.name = lat
             # Handle "no rule" included tokens (words and punctuation that
             # exist in the Docuscope dictionary's words dict but do not have
@@ -207,17 +211,17 @@ class DocuscopeTaggerBase(Tagger):
         # self._get_tag() will validate the returned rule and tag.
         return rule, tag
 
-    def _get_tag(self) -> None:
+    async def _get_tag(self) -> None:
         """ Try to find a tag for the current file position. """
         # Try finding a long rule.
-        rule, tag = self._get_long_rule_tag()
+        rule, tag = await self._get_long_rule_tag()
         # If the long rule and tag are invalid (i.e. we got None and None),
         # try finding a short rule.
         if not self._is_valid_rule(rule) and not self._is_valid_tag(tag):
             # Try finding a short rule (which could be the "untagged",
             # "no rule", or "excluded" rules). This method *should* never
             # return None, None (but technically it can).
-            rule, tag = self._get_short_rule_tag()
+            rule, tag = await self._get_short_rule_tag()
         # We should absolutely have a valid rule and tag at this point.
         if not self._is_valid_rule(rule) or not self._is_valid_tag(tag):
             raise ValueError(f"Unexpected None, None return values from "
@@ -255,7 +259,7 @@ class DocuscopeTaggerBase(Tagger):
         else:
             self.token_index = tag.index_end + 1
 
-    def tag_next(self, tokens: list[Token]) -> int:
+    async def tag_next(self, tokens: list[Token]) -> int:
         """Tag the next token."""
         self.reset()
         self.tokens = tokens
@@ -263,7 +267,7 @@ class DocuscopeTaggerBase(Tagger):
                self.token_index is not None):
             logging.debug("\nPassing self.tokens[%d] = %s",
                           self.token_index, self.tokens[self.token_index])
-            self._get_tag()
+            await self._get_tag()
             yield self.token_index
 
     def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:

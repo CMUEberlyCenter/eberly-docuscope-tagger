@@ -7,11 +7,12 @@ from difflib import ndiff
 from typing import Counter, Dict
 from uuid import UUID
 
+import emcache
 import neo4j
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from jsondiff import diff
-from neo4j import GraphDatabase
+from neo4j import AsyncGraphDatabase, AsyncDriver
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -29,9 +30,10 @@ from .ity.taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
 from .ity.tokenizers.regex_tokenizer import RegexTokenizer
 from .ity.tokenizers.tokenizer import TokenType
 
+CACHE = None #await emcache.create_client([emcache.MemcachedHostAddress(SETTINGS.memcache_url, SETTINGS.memcache_port)])
 ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False, class_=AsyncSession)
-DRIVER: neo4j.Driver = None
+DRIVER: AsyncDriver = None
 WORDCLASSES = None
 TAGGER = None
 
@@ -58,21 +60,25 @@ async def startup_event():
     """Initialize some important static data on startup.
     Loads the _wordclasses json file for use by tagger.
     Initializes database driver."""
-    global DRIVER, WORDCLASSES # pylint: disable=global-statement
-    DRIVER = GraphDatabase.driver(
+    global DRIVER, WORDCLASSES, CACHE # pylint: disable=global-statement
+    DRIVER = AsyncGraphDatabase.driver(
         SETTINGS.neo4j_uri,
         auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password.get_secret_value()))
     WORDCLASSES = get_wordclasses()
+    CACHE = await emcache.create_client([emcache.MemcachedHostAddress(SETTINGS.memcache_url, SETTINGS.memcache_port)])
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler.  Closes database connection cleanly."""
     if DRIVER is not None:
-        DRIVER.close()
+        await DRIVER.close()
     if ENGINE is not None:
         await ENGINE.dispose()
+    if CACHE is not None:
+        await CACHE.close()
 
-async def session():
+async def session() -> AsyncSession:
     """Establish a scoped session for accessing the database."""
     my_session: AsyncSession = SESSION()
     try:
@@ -84,13 +90,21 @@ async def session():
     finally:
         await my_session.close()
 
-def neo_session():
+async def neo_session() -> neo4j.AsyncSession:
     """Establish a scoped session for accessing the neo4j database."""
-    my_session: neo4j.Session = DRIVER.session()
+    my_session: neo4j.AsyncSession = DRIVER.session()
     try:
         yield my_session
     finally:
-        my_session.close()
+        await my_session.close()
+
+async def memcache() -> emcache.Client:
+    """"""
+    client = await emcache.create_client([emcache.MemcachedHostAddress(SETTINGS.memcache_url, SETTINGS.memcache_port)])
+    try:
+        yield client
+    finally:
+        await client.close()
 
 class Message(BaseModel):
     """Model for tag responses."""
@@ -98,7 +112,7 @@ class Message(BaseModel):
     message: str
     event: str
 
-async def atag_document(doc_id: UUID, request: Request, sql: AsyncSession, neo: neo4j.Session):
+async def atag_document(doc_id: UUID, request: Request, sql: AsyncSession, neo: neo4j.AsyncSession, cache: emcache.Client):
     """"""
     start_time = datetime.now()
     query = await sql.execute(select(Filesystem.content, Filesystem.name).where(Filesystem.id == doc_id))
@@ -112,8 +126,8 @@ async def atag_document(doc_id: UUID, request: Request, sql: AsyncSession, neo: 
                 doc_content = docx_to_text(doc_content)
             tokenizer = RegexTokenizer()
             tokens = tokenizer.tokenize(doc_content)
-            tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
-                                        return_included_tags=True, wordclasses=WORDCLASSES, session=neo)
+            tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
+                                        return_included_tags=True, wordclasses=WORDCLASSES, session=neo, cache=cache)
             tagger_gen = tagger.tag_next(tokens)
             tot_tokens = len(tokens)
             tenpc = tot_tokens // 10
@@ -123,8 +137,8 @@ async def atag_document(doc_id: UUID, request: Request, sql: AsyncSession, neo: 
                     logging.info("Client Disconnected!")
                     return
                 try:
-                    indx = next(tagger_gen)
-                except StopIteration:
+                    indx = await tagger_gen.asend(None)
+                except StopAsyncIteration:
                     break
                 if indx - last_indx >= tenpc:
                     last_indx = indx
@@ -169,7 +183,7 @@ async def tag(uuid: UUID,
               request: Request,
               #background_tasks: BackgroundTasks,
               sql: AsyncSession = Depends(session),
-              neo: neo4j.Session = Depends(neo_session)):
+              neo: neo4j.AsyncSession = Depends(neo_session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
     try:
@@ -182,7 +196,7 @@ async def tag(uuid: UUID,
     (state,) = result.first()
     if state == 'pending':
         # TODO: check for too many submitted
-        tagging = atag_document(uuid, request, sql, neo)
+        tagging = atag_document(uuid, request, sql, neo, CACHE)
         return EventSourceResponse(tagging)
         #background_tasks.add_task(tag_document, uuid, sql, neo)
         #return {"message": f"Tagging of {uuid} started.", "state": state}
@@ -209,7 +223,7 @@ class CheckResults(BaseModel):
 @app.get("/test/{uuid}", response_model=CheckResults)
 async def test_tagging(uuid: UUID,
                        sql: AsyncSession = Depends(session),
-                       neo: neo4j.Session = Depends(neo_session)):
+                       neo: neo4j.AsyncSession = Depends(neo_session)):
     """ Check the document status and start the tagging if appropriate. """
     # check if uuid
     try:
@@ -224,7 +238,7 @@ async def test_tagging(uuid: UUID,
         return {"message": f"{uuid} is not yet tagged."}
     if state == 'tagged':
         # check for too many submitted
-        return check_tagging(uuid, sql, neo)
+        return await check_tagging(uuid, sql, neo, CACHE)
 
     if state == 'error':
         raise HTTPException(detail=f"Tagging failed for {uuid}",
@@ -239,7 +253,7 @@ async def test_tagging(uuid: UUID,
 async def profile_tagging(
         uuid: UUID,
         sql: AsyncSession = Depends(session),
-        neo: neo4j.Session = Depends(neo_session)):
+        neo: neo4j.AsyncSession = Depends(neo_session)):
     """Profile tagging and dump to file."""
     query = await sql.execute(select(Filesystem.content).where(Filesystem.id == uuid))
     (doc_content,) = query.first()
@@ -253,31 +267,64 @@ async def profile_tagging(
 async def test_corpus(
         corpus: list[UUID],
         sql: AsyncSession = Depends(session),
-        neo: neo4j.Session = Depends(neo_session)):
+        neo: neo4j.AsyncSession = Depends(neo_session)):
     """Perform tagging check on multiple documents."""
-    return {uuid: await check_tagging(uuid, sql, neo) for uuid in corpus}
+    return {uuid: await check_tagging(uuid, sql, neo, CACHE) for uuid in corpus}
 
-async def check_tagging(doc_id: UUID, sql: AsyncSession, neo: neo4j.Session) -> CheckResults:
+async def check_tagging(doc_id: UUID, sql: AsyncSession, neo: neo4j.AsyncSession, cache: emcache.Client) -> CheckResults:
     """Perform tagging with neo4j tagger and check against the database. """
-    query = await sql.execute(select(Filesystem.content, Filesystem.processed).where(Filesystem.id == doc_id))
-    (doc_content, doc_processed) = query.first()
+    query = await sql.execute(select(Filesystem.content, Filesystem.name, Filesystem.processed).where(Filesystem.id == doc_id))
+    (doc_content, name, processed) = query.first()
     if doc_content:
-        # tag document
-        tagger = neo_tagger(WORDCLASSES, neo)
-        processed = tagger.tag(docx_to_text(doc_content))
-        tag_diff = diff(doc_processed, processed.dict())
+        try:
+            if name.endswith(".docx"):
+                doc_content = docx_to_text(doc_content)
+            tokenizer = RegexTokenizer()
+            tokens = tokenizer.tokenize(doc_content)
+            tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
+                                        return_included_tags=True, wordclasses=WORDCLASSES, session=neo, cache=cache)
+            tagger_gen = tagger.tag_next(tokens)
+            while True:
+                try:
+                    await tagger_gen.asend(None)
+                except StopAsyncIteration:
+                    break
+            output = SimpleHTMLFormatter().format(tags = (tagger.rules, tagger.tags), tokens=tokens, text_str=doc_content)
+        except Exception as exc:
+            logging.error("Error while tagging %s", doc_id)
+            traceback.print_exc()
+            raise exc
+        type_count = Counter([token.type for token in tokens])
+        not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
+        test_processed = tag_json(ItyTaggerResult(
+            text_contents=doc_content,
+            format_output=output,
+            tag_dict=tagger.rules,
+            num_tokens=len(tokens),
+            num_word_tokens=type_count[TokenType.WORD],
+            num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
+            num_included_tokens=sum([type_count[itype] for itype in not_excluded]),
+            num_excluded_tokens=sum([type_count[etype] for etype in tokenizer.excluded_token_types]),
+            tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tagger.tags]
+        )).dict()
+        tag_diff = diff(processed, test_processed)
         if tag_diff:
             logging.warning("diff: %s", tag_diff)
-        if doc_processed['ds_output'] != processed.ds_output:
+        if processed['ds_output'] != test_processed['ds_output']:
+            #logging.warning(''.join(list(ndiff(
+            #    "</span>\n".join(
+            #        processed['ds_output'].split('</span>')).splitlines(keepends=True),
+            #    "</span>\n".join(
+            #        test_processed['ds_output'].split("</span>")).splitlines(keepends=True)))[slice(1600)]))
             logging.warning(''.join(ndiff(
                 "</span>\n".join(
-                    doc_processed['ds_output'].split('</span>')).splitlines(keepends=True),
+                    processed['ds_output'].split('</span>')).splitlines(keepends=True),
                 "</span>\n".join(
-                    processed.ds_output.split("</span>")).splitlines(keepends=True))))
+                    test_processed['ds_output'].split("</span>")).splitlines(keepends=True))))
         return {
-            "output_check": doc_processed['ds_output'] == processed.ds_output,
-            "token_check": doc_processed['ds_num_tokens'] == processed.ds_num_tokens,
-            "tag_dict_check": len(doc_processed['ds_tag_dict']) - len(processed.ds_tag_dict),
+            "output_check": processed['ds_output'] == test_processed['ds_output'],
+            "token_check": processed['ds_num_tokens'] == test_processed['ds_num_tokens'],
+            "tag_dict_check": len(processed['ds_tag_dict']) - len(test_processed['ds_tag_dict']),
             #"tag_count": str(diff(doc_processed['ds_count_dict'], processed['ds_count_dict']))
         }
     logging.error("No document content for %s.", doc_id)

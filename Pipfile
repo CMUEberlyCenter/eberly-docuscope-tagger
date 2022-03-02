@@ -11,12 +11,13 @@ email-validator = "*"
 ujson = "*"
 jsondiff = "*"
 fastapi = "*"
-neo4j = "*"
+neo4j = "==5.0.0a1"
 hypercorn = "*"
 pandas = "*"
 pydantic = {extras = ["dotenv"], version = "*"}
 sse-starlette = "*"
 aiomysql = "*"
+emcache = "*"
 
 [dev-packages]
 pylint = "*"

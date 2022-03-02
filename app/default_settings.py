@@ -1,5 +1,6 @@
 """Defines and sets default values for configuation object."""
 import os
+from tokenize import Number
 
 from pydantic import BaseSettings, DirectoryPath, SecretStr, stricturl
 
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     db_port: int = 3306
     db_password: SecretStr = 'docuscope'
     db_user: str = 'docuscope'
+    memcache_url: str = 'localhost'
+    memcache_port: int = 11211
     mysql_database: str = 'docuscope'
     neo4j_password: SecretStr = 'docuscope'
     neo4j_user: str = 'neo4j'

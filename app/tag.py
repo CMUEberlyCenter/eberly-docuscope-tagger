@@ -96,7 +96,7 @@ async def tag_text(tag_request: TagRequst,
     tokenizer = RegexTokenizer()
     text = escape(tag_request.text)
     tokens = tokenizer.tokenize(text)
-    tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
+    tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
         return_included_tags=True, wordclasses=WORDCLASSES, session=rule_db)
     rules, tags = tagger.tag(tokens)
     formatter = SimpleHTMLFormatter()
