@@ -8,7 +8,7 @@ from datetime import datetime
 from pydantic.main import BaseModel
 
 from ..default_settings import SETTINGS
-from .formatters.formatter import Formatter
+from .formatters.ity_formatter import ItyFormatter
 from .formatters.simple_html_formatter import SimpleHTMLFormatter
 from .taggers.docuscope_tagger import DocuscopeTagger
 from .taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
@@ -31,7 +31,7 @@ class ItyTaggerResult(BaseModel):
 
 class ItyTagger():
     """ Base tagger class for tagging a string. """
-    def __init__(self, tagger: Tagger, formatter:Formatter=None,
+    def __init__(self, tagger: Tagger, formatter: ItyFormatter=None,
                  tokenizer:Tokenizer=None, tagger_type:str="DocuscopeTagger"):
         self.tagger = tagger
         self.formatter = formatter or SimpleHTMLFormatter()

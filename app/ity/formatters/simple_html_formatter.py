@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..taggers.tagger import TaggerRule, TaggerTag
 from ..tokenizers.tokenizer import Token, TokenType
-from .formatter import Formatter
+from .ity_formatter import ItyFormatter
 
 def pithify(rule_name):
     """ If rule name is a string, get the last part after the last '.' """
@@ -15,7 +15,7 @@ def pithify(rule_name):
         return rule_name.split(".")[-1]
     return rule_name
 
-class SimpleHTMLFormatter(Formatter):
+class SimpleHTMLFormatter(ItyFormatter):
     """ Format tagged document as simple HTML. """
 
     def __init__(

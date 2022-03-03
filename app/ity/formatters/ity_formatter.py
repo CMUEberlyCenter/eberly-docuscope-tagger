@@ -10,7 +10,7 @@ from ..tokenizers.tokenizer import Token
 from ..base import BaseClass
 
 
-class Formatter(BaseClass):
+class ItyFormatter(BaseClass):
     """
     This is the Ity Formatter base class. It contains an abstract method,
     format(), which accepts several input values, including rules, tags,
