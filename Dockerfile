@@ -12,6 +12,7 @@ COPY ./Pipfile.lock .
 RUN PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy
 
 FROM base AS runtime
+ENV PYTHONOPTIMIZE=2
 ARG BRANCH="master"
 ARG COMMIT=""
 ARG TAG="latest"
@@ -26,4 +27,4 @@ ENV PATH="/.venv/bin:$PATH"
 RUN useradd --create-home appuser
 WORKDIR /home/appuser
 COPY ./app ./app
-CMD ["hypercorn", "app.tag:APP", "--bind", "0.0.0.0:80"]
+CMD ["hypercorn", "app.main:app", "--bind", "0.0.0.0:80"]

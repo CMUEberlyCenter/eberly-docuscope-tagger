@@ -118,9 +118,9 @@ class DocuscopeTaggerBase(Tagger):
             rule.name = ds_rule['lat']
             try:
                 rule.full_name = ".".join([self.full_label, rule.name])
-            except Exception as e:
-                print(ds_rule)
-                raise e
+            except Exception as exc:
+                logging.error(ds_rule)
+                raise exc
             last_token_index = self._get_nth_next_included_token_index(
                 offset=len(ds_rule['path']) - 1)
             tag.rules=[(rule.full_name, ds_rule['path'])]
@@ -270,26 +270,22 @@ class DocuscopeTaggerBase(Tagger):
             await self._get_tag()
             yield self.token_index
 
-    def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
+    async def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         # Several helper methods need access to the tokens.
         self.reset()
         self.tokens = tokens
-        #self.token_index: int = 0
         # Loop through the tokens and tag them.
         while (self.token_index < len(self.tokens) and
                self.token_index is not None):
             logging.debug("\nPassing self.tokens[%d] = %s",
                           self.token_index, self.tokens[self.token_index])
-            self._get_tag()
+            await self._get_tag()
         # All done, so let's do some cleanup.
         rules = self.rules
         tags = self.tags
         # Clear this instance's tokens, rules, and tags.
         # (This is an attempt to free up memory a bit earlier.)
         self.reset()
-        #self.tokens = []
-        #self.rules = {}
-        #self.tags = []
         # Return the goods.
         return rules, tags
 

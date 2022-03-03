@@ -1,9 +1,6 @@
 """Defines and sets default values for configuation object."""
 import os
-from tokenize import Number
-
 from pydantic import BaseSettings, DirectoryPath, SecretStr, stricturl
-
 
 class Settings(BaseSettings):
     """Application Settings.

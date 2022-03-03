@@ -1,0 +1,5 @@
+app/dictionaries/
+*.pem
+**/__pycache__
+.env
+*~

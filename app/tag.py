@@ -93,14 +93,11 @@ async def tag_text(tag_request: TagRequst,
                    rule_db: Session = Depends(rule_session)) -> DocuScopeDocument:
     """Use DocuScope to tag the submitted text."""
     start_time = datetime.now()
-    tokenizer = RegexTokenizer()
     text = escape(tag_request.text)
-    tokens = tokenizer.tokenize(text)
-    tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
-        return_included_tags=True, wordclasses=WORDCLASSES, session=rule_db)
-    rules, tags = tagger.tag(tokens)
-    formatter = SimpleHTMLFormatter()
-    output = formatter.format(
+    tokens = RegexTokenizer().tokenize(text)
+    rules, tags = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
+        return_included_tags=True, wordclasses=WORDCLASSES, session=rule_db).tag(tokens)
+    output = SimpleHTMLFormatter().format(
         tags=(rules, tags), tokens=tokens, text_str=text)
     output = re.sub(r'(\n|\s)+', ' ', output)
     output = "<body><p>" + \
