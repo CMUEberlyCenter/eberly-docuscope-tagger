@@ -58,7 +58,7 @@ class DocuscopeTagger(DocuscopeTaggerBase):
             self._ds_dict["shortRules"] = {}
         self.wordclasses: dict[str, list[str]] = self._ds_dict["words"]
 
-    def get_long_rule(self):
+    async def get_long_rule(self):
         next_token_index = self._get_nth_next_included_token_index()
         rules: list[LatRule] = []
         # cartesian product of the first and second word for token lists
@@ -84,7 +84,7 @@ class DocuscopeTagger(DocuscopeTaggerBase):
             None)
         return best_ds_rule
 
-    def get_short_rule(self, token_ds_words: list[str]):
+    async def get_short_rule(self, token_ds_words: list[str]):
         # Try to find a short rule for one of this token's ds_words.
         for ds_word in token_ds_words:
             if ds_word in self._ds_dict["shortRules"]:

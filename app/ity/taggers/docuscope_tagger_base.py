@@ -11,8 +11,9 @@ from .tagger import Tagger, TaggerRule, TaggerTag
 class LatRule(TypedDict):
     """Model for LAT rules."""
     #pylint: disable=too-few-public-methods
-    lat: str # The LAT id
-    path: list[str] # The list of strings that make up the rule pattern.
+    lat: str  # The LAT id
+    path: list[str]  # The list of strings that make up the rule pattern.
+
 
 class DocuscopeTaggerBase(Tagger):
     """
@@ -57,7 +58,7 @@ class DocuscopeTaggerBase(Tagger):
             ),
             **kwargs):
         super().__init__(
-            excluded_token_types = excluded_token_types,
+            excluded_token_types=excluded_token_types,
             *args, **kwargs)
         # This is a weird setting
         self.allow_overlapping_tags = allow_overlapping_tags
@@ -92,7 +93,7 @@ class DocuscopeTaggerBase(Tagger):
             return []
 
     @abc.abstractmethod
-    def get_long_rule(self) -> Optional[LatRule]:
+    async def get_long_rule(self) -> Optional[LatRule]:
         """Return the longest matching LAT rule that is at least lenght two."""
         return None
 
@@ -123,14 +124,14 @@ class DocuscopeTaggerBase(Tagger):
                 raise exc
             last_token_index = self._get_nth_next_included_token_index(
                 offset=len(ds_rule['path']) - 1)
-            tag.rules=[(rule.full_name, ds_rule['path'])]
-            tag.index_start=self.token_index
-            tag.index_end=last_token_index
-            tag.pos_start=self.tokens[self.token_index].position
-            tag.pos_end=self.tokens[last_token_index].position
-            tag.len=tag.index_end - tag.index_start + 1
-            tag.token_end_len=self.tokens[last_token_index].length
-            tag.num_included_tokens=len(ds_rule['path'])
+            tag.rules = [(rule.full_name, ds_rule['path'])]
+            tag.index_start = self.token_index
+            tag.index_end = last_token_index
+            tag.pos_start = self.tokens[self.token_index].position
+            tag.pos_end = self.tokens[last_token_index].position
+            tag.len = tag.index_end - tag.index_start + 1
+            tag.token_end_len = self.tokens[last_token_index].length
+            tag.num_included_tokens = len(ds_rule['path'])
             # Okay, do we have a valid rule and tag to return? (That's the best rule).
             if self._is_valid_rule(rule) and self._is_valid_tag(tag):
                 # Return the best rule's rule and tag.
@@ -153,7 +154,7 @@ class DocuscopeTaggerBase(Tagger):
                 next_token_index = self._get_nth_next_included_token_index(
                     starting_token_index=next_token_index)
                 if (next_token_index is None or
-                    rule[i] not in self._get_ds_words_for_token_index(next_token_index)):
+                        rule[i] not in self._get_ds_words_for_token_index(next_token_index)):
                     return False
             # Made it out of the loop? Then the rule applies!
             return next_token_index
@@ -161,7 +162,8 @@ class DocuscopeTaggerBase(Tagger):
             return False
 
     @abc.abstractmethod
-    def get_short_rule(self, token_ds_words: list[str]) -> tuple[Optional[str], Optional[str]]:
+    async def get_short_rule(self,
+                             token_ds_words: list[str]) -> tuple[Optional[str], Optional[str]]:
         """For a list of token words, lookup a matching short rule."""
         return None, None
 
@@ -247,7 +249,8 @@ class DocuscopeTaggerBase(Tagger):
                 tag_token_strs = []
                 for token in self.tokens[tag.index_start:(tag.index_end + 1)]:
                     tag_token_strs.append(token.strings[-1])
-                logging.debug(">>> BEST RULE: %s for \"%s\"", rule.name, str(tag_token_strs))
+                logging.debug(">>> BEST RULE: %s for \"%s\"",
+                              rule.name, str(tag_token_strs))
 
         # Compute the new token index.
         # If "overlapping tags" are allowed, start at the token following
@@ -270,7 +273,7 @@ class DocuscopeTaggerBase(Tagger):
             await self._get_tag()
             yield self.token_index
 
-    async def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
+    async def tag(self, tokens: list[Token]) -> tuple[dict[str, TaggerRule], list[TaggerTag]]:
         # Several helper methods need access to the tokens.
         self.reset()
         self.tokens = tokens
@@ -289,8 +292,9 @@ class DocuscopeTaggerBase(Tagger):
         # Return the goods.
         return rules, tags
 
+
 def rule_applies_for_tokens(rule: list[str], tokens: list[set[str]],
-                            offset:int = 0) -> bool:
+                            offset: int = 0) -> bool:
     """Check if a rule path applies for a given ordered list of tokens."""
     if len(rule) > len(tokens):
         return False

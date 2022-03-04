@@ -50,7 +50,7 @@ class RegexTokenizer(Tokenizer):
     # in the word's "hyphen breaks" would be a formatting error. This way,
     # "north-\n\tnorth-west" results in "north-north-west" instead of
     # "northnorth-west".
-    __pattern_str_inner_word_hyphen = r"\b-\b"
+    _pattern_str_inner_word_hyphen = r"\b-\b"
 
     # "Hyphen Break" Pattern
     # This pattern captures zero or one "hyphen break", i.e., a hyphen and the
@@ -389,7 +389,7 @@ class RegexTokenizer(Tokenizer):
                 # since it's indicative of breaking the word across a
                 # newline *and* an actual word with hyphens in it.
                 inner_word_hyphens = re.findall(
-                    self.__pattern_str_inner_word_hyphen, token_strs[0])
+                    self._pattern_str_inner_word_hyphen, token_strs[0])
                 if not inner_word_hyphens:
                     # Remove the text of the hyphen_break groups.
                     token_str = re.sub(self._pattern_str_hyphen_break, "",

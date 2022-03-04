@@ -44,7 +44,8 @@ SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
                        class_=AsyncSession, future=True)
 DRIVER = AsyncGraphDatabase.driver(
     SETTINGS.neo4j_uri,
-    auth=(SETTINGS.neo4j_user, SETTINGS.neo4j_password.get_secret_value()))
+    auth=(SETTINGS.neo4j_user,
+          SETTINGS.neo4j_password.get_secret_value())) # pylint: disable=no-member
 WORDCLASSES = None
 TAGGER = None
 
@@ -178,7 +179,7 @@ async def tag_document(
     start_time = datetime.now()
     query = await sql.execute(select(Filesystem.content, Filesystem.name)
                               .where(Filesystem.id == doc_id))
-    (doc_content, name) = query.first()
+    (doc_content, name) = query.first() or (None, None)
     if doc_content:
         await sql.execute(update(Filesystem).where(Filesystem.id == doc_id)
                           .values(state='submitted'))
@@ -193,7 +194,7 @@ async def tag_document(
                                         return_included_tags=True, wordclasses=WORDCLASSES,
                                         session=neo, cache=cache)
             tagger_gen = tagger.tag_next(tokens)
-            next_indx = len(tokens) // 10
+            timeout = start_time + timedelta(seconds=1)
             while True:
                 if await request.is_disconnected():
                     logging.info("Client Disconnected!")
@@ -202,8 +203,8 @@ async def tag_document(
                     indx = await tagger_gen.asend(None)
                 except StopAsyncIteration:
                     break
-                if indx >= next_indx:
-                    next_indx += len(tokens) // 10
+                if datetime.now() > timeout:
+                    timeout = datetime.now() + timedelta(seconds=1)
                     yield Message(doc_id=doc_id, event='processing',
                                   message=f"{indx * 100 // len(tokens)}")
             yield Message(doc_id=doc_id, event='processing', message='100')
@@ -245,8 +246,11 @@ async def tag_document(
     else:
         await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
             state='error',
-            processed={'error': 'No file data to process.', 'date_tagged': datetime.now(
-                timezone.utc).astimezone().isoformat(), 'tagging_time': 0}
+            processed={
+                'error': 'No file data to process.',
+                'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                'tagging_time': 0
+            }
         ))
         yield Message(doc_id=doc_id, event="error", message=f"No content in document: {name}!")
 

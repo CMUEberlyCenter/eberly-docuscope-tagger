@@ -440,7 +440,7 @@ class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
         return tokens
 
     @abc.abstractmethod
-    def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
+    async def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         """
         An abstract method where all the tagging of the tokens list happens.
         It's recommended to assign the tokens argument to self.tokens
