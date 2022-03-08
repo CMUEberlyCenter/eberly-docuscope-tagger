@@ -7,7 +7,6 @@ name = "pypi"
 python-docx = "*"
 Jinja2 = "*"
 SQLAlchemy = {extras = ["asyncio"], version = "*"}
-email-validator = "*"
 ujson = "*"
 jsondiff = "*"
 fastapi = "*"

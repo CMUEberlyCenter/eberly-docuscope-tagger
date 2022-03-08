@@ -29,7 +29,7 @@ from sse_starlette.sse import EventSourceResponse
 from .count_patterns import CategoryPatternData, count_patterns, sort_patterns
 from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
-from .ds_db import Filesystem
+from .database import Submission
 from .ds_tagger import get_wordclasses
 from .ity.formatters.simple_html_formatter import SimpleHTMLFormatter
 from .ity.tagger import ItyTaggerResult, neo_tagger, tag_json
@@ -169,7 +169,7 @@ class Message(BaseModel):
     event: Literal['submitted', 'processing', 'done', 'error', 'pending']
 
 
-async def tag_document(
+async def tag_document(  #pylint: disable=too-many-locals
         doc_id: UUID,
         request: Request,
         sql: AsyncSession,
@@ -177,11 +177,11 @@ async def tag_document(
         cache: emcache.Client):
     """Incrementally tag the given database document."""
     start_time = datetime.now()
-    query = await sql.execute(select(Filesystem.content, Filesystem.name)
-                              .where(Filesystem.id == doc_id))
+    query = await sql.execute(select(Submission.content, Submission.name)
+                              .where(Submission.id == doc_id))
     (doc_content, name) = query.first() or (None, None)
     if doc_content:
-        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id)
+        await sql.execute(update(Submission).where(Submission.id == doc_id)
                           .values(state='submitted'))
         await sql.commit()
         yield Message(doc_id=doc_id, event="submitted", message="0")
@@ -213,7 +213,7 @@ async def tag_document(
         except Exception as exc:
             logging.error("Error while tagging %s", doc_id)
             traceback.print_exc()
-            await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+            await sql.execute(update(Submission).where(Submission.id == doc_id).values(
                 state='error',
                 processed={
                     'error': f'{exc}',
@@ -225,7 +225,7 @@ async def tag_document(
             raise exc
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
-        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+        await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='tagged',
             processed=tag_json(ItyTaggerResult(
                 text_contents=doc_content,
@@ -244,7 +244,7 @@ async def tag_document(
         ))
         yield Message(doc_id=doc_id, event="done", message=str(datetime.now() - start_time))
     else:
-        await sql.execute(update(Filesystem).where(Filesystem.id == doc_id).values(
+        await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='error',
             processed={
                 'error': 'No file data to process.',
@@ -258,7 +258,6 @@ async def tag_document(
 @app.get("/tag/{uuid}", response_model=Message)
 async def tag(uuid: UUID,
               request: Request,
-              # background_tasks: BackgroundTasks,
               sql: AsyncSession = Depends(session),
               neo: NeoAsyncSession = Depends(neo_session)) -> Message:
     """ Check the document status and tag if pending. """
@@ -269,14 +268,12 @@ async def tag(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    result = await sql.execute(select(Filesystem.state).where(Filesystem.id == uuid))
+    result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
     (state,) = result.first()
     if state == 'pending':
-        # TODO: check for too many submitted
+        # check for too many submitted? Need to find limit emperically.
         tagging = tag_document(uuid, request, sql, neo, CACHE)
         return EventSourceResponse(tagging)
-        #background_tasks.add_task(tag_document, uuid, sql, neo)
-        # return {"message": f"Tagging of {uuid} started.", "state": state}
     if state == 'submitted':
         return Message(doc_id=uuid, message=f"{uuid} already submitted.", event='done')
     if state == 'tagged':
@@ -299,9 +296,9 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             logging.info("Client Disconnected!")
             return
         async with SESSION() as sql:
-            result = await sql.execute(select(func.count(Filesystem.id))
+            result = await sql.execute(select(func.count(Submission.id))
                                        .execution_options(populate_existing=True)
-                                       .where(Filesystem.state == 'submitted'))
+                                       .where(Submission.state == 'submitted'))
             (submitted,) = result.first() or (0,)
             if submitted > 0:
                 yield Message(
@@ -316,7 +313,7 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             logging.info("Client Disconnected!")
             return
         async with SESSION() as sql:
-            pending = await sql.execute(select(Filesystem.id).where(Filesystem.state == 'pending'))
+            pending = await sql.execute(select(Submission.id).where(Submission.state == 'pending'))
             (docid,) = pending.first() or (None,)
             if docid:
                 print(docid)
@@ -351,15 +348,15 @@ class Status(BaseModel):
 @app.get('/status/{uuid}')
 async def document_status(uuid: UUID, sql: AsyncSession = Depends(session)) -> Status:
     """Get the state of the given document."""
-    result = await sql.execute(select(Filesystem.state).where(Filesystem.id == uuid))
+    result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
     return result.first()
 
 
 @app.get('/status')
 async def status_all(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get the count of the various states of the documents in the database."""
-    result = await sql.execute(select(Filesystem.state, func.count(Filesystem.state))
-                               .group_by(Filesystem.state))
+    result = await sql.execute(select(Submission.state, func.count(Submission.state))
+                               .group_by(Submission.state))
     return result.all()
 
 
@@ -383,7 +380,7 @@ async def test_tagging(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    query = await sql.execute(select(Filesystem.state).where(Filesystem.id == uuid))
+    query = await sql.execute(select(Submission.state).where(Submission.id == uuid))
     (state,) = query.first()
     if state in ['pending', 'submitted']:
         return {"message": f"{uuid} is not yet tagged."}
@@ -407,7 +404,7 @@ async def profile_tagging(
         sql: AsyncSession = Depends(session),
         neo: NeoAsyncSession = Depends(neo_session)):
     """Profile tagging and dump to file."""
-    query = await sql.execute(select(Filesystem.content).where(Filesystem.id == uuid))
+    query = await sql.execute(select(Submission.content).where(Submission.id == uuid))
     (doc_content,) = query.first()
     tagger = neo_tagger(WORDCLASSES, neo)
     content = docx_to_text(doc_content)
@@ -425,14 +422,14 @@ async def test_corpus(
     return {uuid: await check_tagging(uuid, sql, neo, CACHE) for uuid in corpus}
 
 
-async def check_tagging(
+async def check_tagging(  #pylint: disable=too-many-locals
         doc_id: UUID,
         sql: AsyncSession,
         neo: NeoAsyncSession,
         cache: emcache.Client) -> CheckResults:
     """Perform tagging with neo4j tagger and check against the database. """
-    query = await sql.execute(select(Filesystem.content, Filesystem.name, Filesystem.processed)
-                              .where(Filesystem.id == doc_id))
+    query = await sql.execute(select(Submission.content, Submission.name, Submission.processed)
+                              .where(Submission.id == doc_id))
     (doc_content, name, processed) = query.first() or (None, None, None)
     if doc_content:
         try:

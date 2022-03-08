@@ -38,7 +38,7 @@ class UUID(TypeDecorator):
             value = uuid.UUID(bytes=value)
         return value
 
-class Filesystem(BASE): #pylint: disable=R0903
+class Submission(BASE): #pylint: disable=R0903
     """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
@@ -89,4 +89,4 @@ class Assignment(BASE): #pylint: disable=R0903
 
 def id_exists(session: Session, file_id):
     """Check if the given file_id exists in the database."""
-    return session.query(exists().where(Filesystem.id == file_id)).scalar()
+    return session.query(exists().where(Submission.id == file_id)).scalar()

@@ -13,6 +13,8 @@ RUN PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy
 
 FROM base AS runtime
 ENV PYTHONOPTIMIZE=2
+ENV PATH="/.venv/bin:$PATH"
+RUN useradd --create-home appuser
 ARG BRANCH="master"
 ARG COMMIT=""
 ARG TAG="latest"
@@ -23,8 +25,6 @@ LABEL maintainer=${USER}
 LABEL version=${TAG}
 LABEL description="DocuScope Tagger Service"
 COPY --from=deps /.venv /.venv
-ENV PATH="/.venv/bin:$PATH"
-RUN useradd --create-home appuser
 WORKDIR /home/appuser
 COPY ./app ./app
 CMD ["hypercorn", "app.main:app", "--bind", "0.0.0.0:80"]
