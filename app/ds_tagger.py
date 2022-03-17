@@ -7,13 +7,14 @@ except ImportError:
 import gzip
 import logging
 from pathlib import Path
+from typing import Optional
 
 from .default_settings import SETTINGS
 from .ity.tagger import ItyTagger, ds_tagger
 from .ity.taggers.docuscope_tagger import DocuscopeDictionary
 
 
-def get_dictionary(dictionary) -> DocuscopeDictionary:
+def get_dictionary(dictionary: Optional[str]=None) -> DocuscopeDictionary:
     """Retrieve the given dictionary."""
     dictionary = dictionary or SETTINGS.dictionary
     ds_dict = Path(SETTINGS.dictionary_home) / f'{dictionary}.json.gz'
@@ -31,6 +32,9 @@ def get_dictionary(dictionary) -> DocuscopeDictionary:
 
 def get_wordclasses() -> dict[str, list[str]]:
     """Retrieve the wordclasses from the wordclasses.json file."""
+    # profiling loads wordclasses in 1.3s, so this should be fine
+    # particularly since it only happens at startup.
+    # Moving to a dbm might still be better in the long run.
     data = {}
     wcs = Path(SETTINGS.dictionary_home) / 'wordclasses.json'
     if wcs.is_file():
@@ -42,8 +46,9 @@ def get_wordclasses() -> dict[str, list[str]]:
         logging.error("No wordclasses in %s", wcs)
     return data
 
-def create_ds_tagger(dictionary: str) -> ItyTagger:
+def create_ds_tagger(dictionary: Optional[str]=None) -> ItyTagger:
     """Create DocuScope Ity tagger using the specified dictionary."""
+    # profiles to taking over 30 seconds.
     dictionary = dictionary or SETTINGS.dictionary
     ds_dict = get_dictionary(dictionary)
     if not ds_dict:
@@ -60,3 +65,8 @@ def create_ds_tagger(dictionary: str) -> ItyTagger:
         logging.error("Invalid dictionary format, no words: %s", dictionary)
         raise KeyError
     return ds_tagger(dictionary, ds_dict)
+
+if __name__ == '__main__':
+    #cProfile.run('get_wordclasses()')
+    import cProfile
+    cProfile.run('create_ds_tagger(SETTINGS.dictionary)')

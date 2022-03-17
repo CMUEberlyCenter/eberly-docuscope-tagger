@@ -8,11 +8,10 @@ from datetime import datetime, timedelta, timezone
 from difflib import ndiff
 from html import escape
 from typing import Counter, Dict, List, Literal, Optional
-from uuid import UUID
+from uuid import UUID, uuid1
 
 import emcache
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from jsondiff import diff
@@ -45,7 +44,7 @@ SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
 DRIVER = AsyncGraphDatabase.driver(
     SETTINGS.neo4j_uri,
     auth=(SETTINGS.neo4j_user,
-          SETTINGS.neo4j_password.get_secret_value())) # pylint: disable=no-member
+          SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
 WORDCLASSES = None
 TAGGER = None
 
@@ -65,7 +64,6 @@ app = FastAPI(
 #    allow_methods=['GET', 'POST'],
 #    allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
-app.add_middleware(GZipMiddleware)
 
 
 @app.on_event("startup")
@@ -75,8 +73,12 @@ async def startup_event():
     Initializes database driver."""
     global WORDCLASSES, CACHE  # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()
-    CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
-        SETTINGS.memcache_url, SETTINGS.memcache_port)])
+    try:
+        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
+            SETTINGS.memcache_url, SETTINGS.memcache_port)])
+    except asyncio.TimeoutError as exc:
+        logging.warning(exc)
+        CACHE = None
 
 
 @app.on_event("shutdown")
@@ -112,8 +114,21 @@ async def neo_session() -> NeoAsyncSession:
         await my_session.close()
 
 
+class ServerSentEvent(BaseModel):
+    """Model for Server Sent Events produced by the tagger."""
+    event: Literal['submitted', 'processing', 'done', 'error', 'pending']
+    data: str  # Using Json type causes single quote conversion.
+
+
+class Message(BaseModel):
+    """Model for tag responses."""
+    doc_id: Optional[UUID]
+    status: str
+
+
 class DocuScopeDocument(BaseModel):
     """Model for tagged text."""
+    doc_id: Optional[UUID]
     word_count: int = 0
     html_content: str = ""
     patterns: List[CategoryPatternData]
@@ -126,18 +141,45 @@ class TagRequst(BaseModel):
 
 
 @app.post("/tag")
-async def tag_text(tag_request: TagRequst,
-                   rule_db: NeoAsyncSession = Depends(neo_session)) -> DocuScopeDocument:
-    """Use DocuScope to tag the submitted text."""
+async def tag_post(tag_request: TagRequst,
+                   request: Request,
+                   rule_db: NeoAsyncSession = Depends(neo_session)) -> EventSourceResponse:
+    """Responds to post requests to tag a TagRequest.  Returns ServerSentEvents."""
+    return EventSourceResponse(tag_text(escape(tag_request.text), request, rule_db))
+
+
+async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dict:
+    """Use DocuScope to tag the submitted text.
+    Yields ServerSentEvent dicts because servlet-sse expects dicts."""
+    # pylint: disable=too-many-locals
     start_time = datetime.now()
-    text = escape(tag_request.text)
+    doc_id = uuid1()
     tokens = RegexTokenizer().tokenize(text)
     tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
                                 session=rule_db, cache=CACHE)
-    rules, tags = await tagger.tag(tokens)
+    tagger_gen = tagger.tag_next(tokens)
+    timeout = start_time + timedelta(seconds=1)
+    while True:
+        if await request.is_disconnected():
+            logging.info("Client Disconnected!")
+            return
+        try:
+            indx = await tagger_gen.asend(None)
+        except StopAsyncIteration:
+            break
+        if datetime.now() > timeout:
+            timeout = datetime.now() + timedelta(seconds=1)
+            yield ServerSentEvent(
+                event='processing',
+                data=Message(
+                    doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
+            ).dict()
+    yield ServerSentEvent(
+        event='processing',
+        data=Message(doc_id=doc_id, status='100').json()).dict()
     output = SimpleHTMLFormatter().format(
-        tags=(rules, tags), tokens=tokens, text_str=text)
+        tags=(tagger.rules, tagger.tags), tokens=tokens, text_str=text)
     output = re.sub(r'(\n|\s)+', ' ', output)
     output = "<body><p>" + \
         re.sub(r'<span[^>]*>\s*PZPZPZ\s*</span>',
@@ -148,28 +190,25 @@ async def tag_text(tag_request: TagRequst,
         etr = etree.fromstring(output, parser=parser)  # nosec
     except Exception as exp:
         logging.error(output)
-        raise exp
+        logging.error(exp)
+        raise HTTPException(detail="Unparsable tagged text.",
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exp
     pats = defaultdict(Counter)
     count_patterns(etr, pats)
     type_count = Counter([token.type for token in tokens])
-    return DocuScopeDocument(
-        html_content=generate_tagged_html(etr),
-        patterns=sort_patterns(pats),
-        word_count=type_count[TokenType.WORD],
-        tagging_time=datetime.now() - start_time
-        # pandas.Timedelta(datetime.now()-start_time).isoformat()
-    )
+    yield ServerSentEvent(
+        data=DocuScopeDocument(
+            doc_id=doc_id,
+            html_content=generate_tagged_html(etr),
+            patterns=sort_patterns(pats),
+            word_count=type_count[TokenType.WORD],
+            tagging_time=datetime.now() - start_time
+            # pandas.Timedelta(datetime.now()-start_time).isoformat()
+        ).json(),
+        event='done').dict()
 
 
-class Message(BaseModel):
-    """Model for tag responses."""
-    #pylint: disable=too-few-public-methods
-    doc_id: Optional[UUID]
-    message: str
-    event: Literal['submitted', 'processing', 'done', 'error', 'pending']
-
-
-async def tag_document(  #pylint: disable=too-many-locals
+async def tag_document(  # pylint: disable=too-many-locals
         doc_id: UUID,
         request: Request,
         sql: AsyncSession,
@@ -184,7 +223,8 @@ async def tag_document(  #pylint: disable=too-many-locals
         await sql.execute(update(Submission).where(Submission.id == doc_id)
                           .values(state='submitted'))
         await sql.commit()
-        yield Message(doc_id=doc_id, event="submitted", message="0")
+        yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
+                              event='submitted').dict()
         try:
             if name.endswith(".docx"):
                 doc_content = docx_to_text(doc_content)
@@ -205,9 +245,13 @@ async def tag_document(  #pylint: disable=too-many-locals
                     break
                 if datetime.now() > timeout:
                     timeout = datetime.now() + timedelta(seconds=1)
-                    yield Message(doc_id=doc_id, event='processing',
-                                  message=f"{indx * 100 // len(tokens)}")
-            yield Message(doc_id=doc_id, event='processing', message='100')
+                    yield ServerSentEvent(
+                        event='processing',
+                        data=Message(
+                            doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
+                    ).dict()
+            yield ServerSentEvent(event='processing',
+                                  data=Message(doc_id=doc_id, status='100').json()).dict()
             output = SimpleHTMLFormatter().format(tags=(tagger.rules, tagger.tags),
                                                   tokens=tokens, text_str=doc_content)
         except Exception as exc:
@@ -222,7 +266,9 @@ async def tag_document(  #pylint: disable=too-many-locals
                     'tagging_time': str(datetime.now() - start_time)
                 }
             ))
-            raise exc
+            await sql.commit()
+            raise HTTPException(detail=f"Tagging error ({exc}).",
+                                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
@@ -242,7 +288,11 @@ async def tag_document(  #pylint: disable=too-many-locals
                     '.')[-1] for tag in tagger.tags]
             )).dict()
         ))
-        yield Message(doc_id=doc_id, event="done", message=str(datetime.now() - start_time))
+        await sql.commit()
+        yield ServerSentEvent(
+            event='done',
+            data=Message(doc_id=doc_id,
+                         status=str(datetime.now() - start_time)).json()).dict()
     else:
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='error',
@@ -252,7 +302,10 @@ async def tag_document(  #pylint: disable=too-many-locals
                 'tagging_time': 0
             }
         ))
-        yield Message(doc_id=doc_id, event="error", message=f"No content in document: {name}!")
+        await sql.commit()
+        yield ServerSentEvent(
+            event='error',
+            data=Message(doc_id=doc_id, message=f"No content in document: {name}!").json()).dict()
 
 
 @app.get("/tag/{uuid}", response_model=Message)
@@ -275,9 +328,9 @@ async def tag(uuid: UUID,
         tagging = tag_document(uuid, request, sql, neo, CACHE)
         return EventSourceResponse(tagging)
     if state == 'submitted':
-        return Message(doc_id=uuid, message=f"{uuid} already submitted.", event='done')
+        return Message(doc_id=uuid, message=f"{uuid} already submitted.")
     if state == 'tagged':
-        return Message(doc_id=uuid, message=f"{uuid} already tagged.", event='done')
+        return Message(doc_id=uuid, message=f"{uuid} already tagged.")
     if state == 'error':
         raise HTTPException(detail=f"Tagging failed for {uuid}",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -301,22 +354,21 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
                                        .where(Submission.state == 'submitted'))
             (submitted,) = result.first() or (0,)
             if submitted > 0:
-                yield Message(
-                    message=f"Waiting for {submitted} prior documents to finish.",
-                    event="pending")
+                yield ServerSentEvent(event='pending', data=submitted).dict()
             else:
                 break
             await sql.commit()  # not necessary, but good idea.
-        await asyncio.sleep(1)
+        await asyncio.sleep(1)  # pause before checking again.
     while True:
-        if await request.is_disconnected():
+        if await request.is_disconnected():  # TODO: background tagging on disconnect
             logging.info("Client Disconnected!")
             return
         async with SESSION() as sql:
-            pending = await sql.execute(select(Submission.id).where(Submission.state == 'pending'))
+            pending = await sql.execute(
+                select(Submission.id).where(Submission.state == 'pending').limit(1))
             (docid,) = pending.first() or (None,)
             if docid:
-                print(docid)
+                logging.info("Tagging %s", docid)
                 tag_next = tag_document(docid, request, sql, neo, cache)
                 while True:
                     if await request.is_disconnected():
@@ -329,7 +381,7 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             else:
                 break
             await sql.commit()
-    yield Message(message="No more pending documents.", event='done')
+    yield ServerSentEvent(event='done', data="No more pending documents.").dict()
 
 
 @app.get('/tag')
@@ -422,7 +474,7 @@ async def test_corpus(
     return {uuid: await check_tagging(uuid, sql, neo, CACHE) for uuid in corpus}
 
 
-async def check_tagging(  #pylint: disable=too-many-locals
+async def check_tagging(  # pylint: disable=too-many-locals
         doc_id: UUID,
         sql: AsyncSession,
         neo: NeoAsyncSession,

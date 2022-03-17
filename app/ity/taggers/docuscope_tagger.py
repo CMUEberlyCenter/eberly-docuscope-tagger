@@ -49,14 +49,9 @@ class DocuscopeTagger(DocuscopeTaggerBase):
             # Swizzle ".default" into this instance's label.
             self._label += ".default"
 
-        self._ds_dict = dictionary
-        if "words" not in self._ds_dict:
-            self._ds_dict["words"] = {}
-        if "rules" not in self._ds_dict:
-            self._ds_dict["rules"] = {}
-        if "shortRules" not in self._ds_dict:
-            self._ds_dict["shortRules"] = {}
-        self.wordclasses: dict[str, list[str]] = self._ds_dict["words"]
+        self.rules_db = dictionary['rules']
+        self.short_rules_db = dictionary['shortRules']
+        self.wordclasses: dict[str, list[str]] = dictionary["words"]
 
     async def get_long_rule(self):
         next_token_index = self._get_nth_next_included_token_index()
@@ -66,7 +61,7 @@ class DocuscopeTagger(DocuscopeTaggerBase):
             self._get_ds_words_for_token_index(self.token_index),
             self._get_ds_words_for_token_index(next_token_index)):
             try:
-                rule_dict = self._ds_dict["rules"][token_ds_word][next_token_ds_word]
+                rule_dict = self.rules_db[token_ds_word][next_token_ds_word]
             except KeyError:
                 continue # skip if rule for given pair does not exist
             for ds_lat, ds_rules in rule_dict.items():
@@ -86,7 +81,8 @@ class DocuscopeTagger(DocuscopeTaggerBase):
 
     async def get_short_rule(self, token_ds_words: list[str]):
         # Try to find a short rule for one of this token's ds_words.
+        #with shelve.open('short_rules', flag='r') as rules_db:
         for ds_word in token_ds_words:
-            if ds_word in self._ds_dict["shortRules"]:
-                return self._ds_dict["shortRules"][ds_word], ds_word
+            if ds_word in self.short_rules_db:
+                return self.short_rules_db[ds_word], ds_word
         return None, None

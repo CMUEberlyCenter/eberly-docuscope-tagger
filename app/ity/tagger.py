@@ -17,6 +17,23 @@ from .tokenizers.regex_tokenizer import RegexTokenizer
 from .tokenizers.tokenizer import Tokenizer, TokenType
 
 
+class DocuScopeTagCount(BaseModel):
+    """Model for tag and token counts."""
+    num_tags: int
+    num_included_tokens: int
+
+class DocuScopeTagResult(BaseModel):
+    """Model for DocuScope tagger results."""
+    ds_output: str
+    ds_num_included_tokens: int
+    ds_num_tokens: int
+    ds_num_word_tokens: int
+    ds_num_excluded_tokens: int
+    ds_num_punctuation_tokens: int
+    ds_dictionary: str
+    ds_tag_dict: dict[str, DocuScopeTagCount]
+    ds_count_dict: dict[str, int]
+
 class ItyTaggerResult(BaseModel):
     """Model of Ity tagger results."""
     text_contents: str
@@ -67,7 +84,7 @@ class ItyTagger():
             tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tag_map],
             format_output=output
         )
-    def tag(self, string):
+    def tag(self, string: str) -> DocuScopeTagResult:
         """ Tags the given string and outputs json coercable dictionary. """
         return tag_json(self.tag_string(string))
 
@@ -84,21 +101,6 @@ def ds_tagger(dictionary_name, dictionary):
                                               dictionary=dictionary,
                                               return_included_tags=True))
 
-class DocuScopeTagCount(BaseModel):
-    """Model for tag and token counts."""
-    num_tags: int
-    num_included_tokens: int
-class DocuScopeTagResult(BaseModel):
-    """Model for DocuScope tagger results."""
-    ds_output: str
-    ds_num_included_tokens: int
-    ds_num_tokens: int
-    ds_num_word_tokens: int
-    ds_num_excluded_tokens: int
-    ds_num_punctuation_tokens: int
-    ds_dictionary: str
-    ds_tag_dict: dict[str, DocuScopeTagCount]
-    ds_count_dict: dict[str, int]
 
 def tag_json(result: ItyTaggerResult) -> DocuScopeTagResult:
     """Takes the results of the tagger and creates a dictionary of relevant
