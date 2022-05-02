@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from difflib import ndiff
 from html import escape
+from time import perf_counter
 from typing import Counter, Dict, List, Literal, Optional
 from uuid import UUID, uuid1
 
@@ -22,7 +23,7 @@ from pydantic import BaseModel, constr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-#from starlette.middeware.cors import CORSMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from .count_patterns import CategoryPatternData, count_patterns, sort_patterns
@@ -57,12 +58,12 @@ app = FastAPI(
         'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/'
     })
 
-# app.add_middleware(
-#    CORSMiddleware,
-#    allow_origins=['*'],
-#    allow_credentials=True,
-#    allow_methods=['GET', 'POST'],
-#    allow_headers=['*'])
+app.add_middleware(
+   CORSMiddleware,
+   allow_origins=['*'],
+   allow_credentials=True,
+   allow_methods=['GET', 'POST'],
+   allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
 
 
@@ -152,14 +153,15 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
     """Use DocuScope to tag the submitted text.
     Yields ServerSentEvent dicts because servlet-sse expects dicts."""
     # pylint: disable=too-many-locals
-    start_time = datetime.now()
+    start_time = perf_counter()
     doc_id = uuid1()
+    text = re.sub(r'\n\s*\n', ' PZPZPZ\n\n', text) # detect paragraph breaks.
     tokens = RegexTokenizer().tokenize(text)
     tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
                                 session=rule_db, cache=CACHE)
     tagger_gen = tagger.tag_next(tokens)
-    timeout = start_time + timedelta(seconds=1)
+    timeout = start_time + 1
     while True:
         if await request.is_disconnected():
             logging.info("Client Disconnected!")
@@ -168,8 +170,8 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
             indx = await tagger_gen.asend(None)
         except StopAsyncIteration:
             break
-        if datetime.now() > timeout:
-            timeout = datetime.now() + timedelta(seconds=1)
+        if perf_counter() > timeout:
+            timeout = perf_counter() + 1
             yield ServerSentEvent(
                 event='processing',
                 data=Message(
@@ -202,7 +204,7 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
             html_content=generate_tagged_html(etr),
             patterns=sort_patterns(pats),
             word_count=type_count[TokenType.WORD],
-            tagging_time=datetime.now() - start_time
+            tagging_time=timedelta(seconds=perf_counter() - start_time)
             # pandas.Timedelta(datetime.now()-start_time).isoformat()
         ).json(),
         event='done').dict()
@@ -215,7 +217,7 @@ async def tag_document(  # pylint: disable=too-many-locals
         neo: NeoAsyncSession,
         cache: emcache.Client):
     """Incrementally tag the given database document."""
-    start_time = datetime.now()
+    start_time = perf_counter()
     query = await sql.execute(select(Submission.content, Submission.name)
                               .where(Submission.id == doc_id))
     (doc_content, name) = query.first() or (None, None)
@@ -243,8 +245,8 @@ async def tag_document(  # pylint: disable=too-many-locals
                     indx = await tagger_gen.asend(None)
                 except StopAsyncIteration:
                     break
-                if datetime.now() > timeout:
-                    timeout = datetime.now() + timedelta(seconds=1)
+                if perf_counter() > timeout:
+                    timeout = perf_counter() + 1
                     yield ServerSentEvent(
                         event='processing',
                         data=Message(
@@ -263,7 +265,7 @@ async def tag_document(  # pylint: disable=too-many-locals
                     'error': f'{exc}',
                     'trace': traceback.format_exc(),
                     'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
-                    'tagging_time': str(datetime.now() - start_time)
+                    'tagging_time': str(timedelta(seconds=perf_counter() - start_time))
                 }
             ))
             await sql.commit()
@@ -292,7 +294,7 @@ async def tag_document(  # pylint: disable=too-many-locals
         yield ServerSentEvent(
             event='done',
             data=Message(doc_id=doc_id,
-                         status=str(datetime.now() - start_time)).json()).dict()
+                         status=str(timedelta(seconds=perf_counter() - start_time))).json()).dict()
     else:
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='error',
