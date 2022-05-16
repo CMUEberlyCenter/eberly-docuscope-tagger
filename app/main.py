@@ -236,7 +236,7 @@ async def tag_document(  # pylint: disable=too-many-locals
                                         return_included_tags=True, wordclasses=WORDCLASSES,
                                         session=neo, cache=cache)
             tagger_gen = tagger.tag_next(tokens)
-            timeout = start_time + timedelta(seconds=1)
+            timeout = start_time + 1 # perf_counter returns seconds.
             while True:
                 if await request.is_disconnected():
                     logging.info("Client Disconnected!")
@@ -348,8 +348,9 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
     sql: AsyncSession
     while True:  # wait until outstanding processing is done.
         if await request.is_disconnected():
+            # If disconnected while waiting for resources, abort.
             logging.info("Client Disconnected!")
-            return
+            break
         async with SESSION() as sql:
             result = await sql.execute(select(func.count(Submission.id))
                                        .execution_options(populate_existing=True)
@@ -362,9 +363,6 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             await sql.commit()  # not necessary, but good idea.
         await asyncio.sleep(1)  # pause before checking again.
     while True:
-        if await request.is_disconnected():  # TODO: background tagging on disconnect
-            logging.info("Client Disconnected!")
-            return
         async with SESSION() as sql:
             pending = await sql.execute(
                 select(Submission.id).where(Submission.state == 'pending').limit(1))
@@ -375,7 +373,19 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
                 while True:
                     if await request.is_disconnected():
                         logging.info("Client Disconnected!")
-                        return
+                        while True:
+                            try:
+                                # Exhaust tagging without yielding
+                                # This would probably be better dones as a
+                                # background task, but given that the request
+                                # is no longer pending due to being disconnected
+                                # then doing the processing here should not be
+                                # an issue.  There might be some overhead that
+                                # makes this less than ideal.
+                                await tag_next.asend(None)
+                            except StopAsyncIteration:
+                                break
+                        break # ensure cleanup
                     try:
                         yield await tag_next.asend(None)
                     except StopAsyncIteration:
@@ -383,7 +393,8 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             else:
                 break
             await sql.commit()
-    yield ServerSentEvent(event='done', data="No more pending documents.").dict()
+    if not await request.is_disconnected():
+        yield ServerSentEvent(event='done', data="No more pending documents.").dict()
 
 
 @app.get('/tag')
