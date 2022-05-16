@@ -1,8 +1,8 @@
 -i https://pypi.org/simple
-aiomysql==0.1.0
-anyio==3.5.0
+aiomysql==0.1.1
+anyio==3.6.1
 emcache==0.6.1
-fastapi==0.75.2
+fastapi==0.78.0
 greenlet==1.1.2
 h11==0.13.0
 h2==4.1.0
@@ -28,7 +28,7 @@ six==1.16.0
 sniffio==1.2.0
 sqlalchemy[asyncio]==1.4.36
 sse-starlette==0.10.3
-starlette==0.17.1
+starlette==0.19.1
 toml==0.10.2
 typing-extensions==4.2.0
 ujson==5.2.0
