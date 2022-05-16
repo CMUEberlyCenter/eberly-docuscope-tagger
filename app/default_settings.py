@@ -1,22 +1,42 @@
 """Defines and sets default values for configuation object."""
 import os
-from pathlib import Path
+from pydantic import BaseSettings, DirectoryPath, SecretStr, stricturl
 
-def get_secret(env_var, default=None):
-    """Retrieves the value of the given environment variable prefering any
-    {env_var}_FILE variation to work with docker secrets."""
-    efile = os.getenv("{}_FILE".format(env_var))
-    return Path(efile).read_text().strip() if efile else os.getenv(env_var, default)
+class Settings(BaseSettings):
+    """Application Settings.
 
-class Config(): #pylint: disable=R0903
-    """Configuration object for storing application configuration variables."""
-    DICTIONARY = 'default'
-    DICTIONARY_HOME = os.getenv('DICTIONARY_HOME', os.path.join('/app', 'dictionaries'))
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_DATABASE_URI = "{prot}://{user}:{passwd}@{host}:{port}/{database}".format(
-        prot='mysql+mysqldb',
-        user=get_secret('MYSQL_USER', 'docuscope'),
-        passwd=get_secret('MYSQL_PASSWORD', 'docuscope'),
-        host=os.getenv('DB_HOST', '127.0.0.1'),
-        port=os.getenv('DB_PORT', '3306'),
-        database=os.getenv('MYSQL_DATABASE', 'docuscope'))
+    Through the magic of pydantic and dotenv, these fields are
+    configurable through environment variables and .env files."""
+    dictionary: str = 'default'
+    dictionary_home: DirectoryPath = os.path.join(
+        os.path.dirname(__file__), 'dictionaries')
+    db_host: str = '127.0.0.1'
+    db_port: int = 3306
+    db_password: SecretStr = 'docuscope'
+    db_user: str = 'docuscope'
+    memcache_url: str = 'localhost'
+    memcache_port: int = 11211
+    mysql_database: str = 'docuscope'
+    neo4j_password: SecretStr = 'docuscope'
+    neo4j_user: str = 'neo4j'
+    neo4j_uri: stricturl(tld_required=False,
+                         allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
+                                          'neo4j', 'neo4j+s', 'neo4j+ssc']
+                         ) = 'neo4j://localhost:7687/neo4j'
+    sqlalchemy_track_modifications: bool = False
+
+    class Config():  # pylint: disable=too-few-public-methods
+        """Configuration class for Settings."""
+        env_file = '.env'
+        env_file_encoding = 'utf-8'
+        secrets_dir = '/run/secrets' if os.path.isdir('/run/secrets') else None
+
+
+SETTINGS = Settings()
+SQLALCHEMY_DATABASE_URI: stricturl(tld_required=False, allowed_schemes=['mysql+aiomysql']) = (
+    f"mysql+aiomysql://"
+    f"{SETTINGS.db_user}"
+    f":{SETTINGS.db_password.get_secret_value()}" #pylint: disable=no-member
+    f"@{SETTINGS.db_host}"
+    f":{SETTINGS.db_port}"
+    f"/{SETTINGS.mysql_database}")

@@ -1,5 +1,22 @@
 Bootstrap: docker
-From: python:3.9-buster
+From: python:3.10
+Stage: deps
+
+%files
+        Pipfile
+        Pipfile.lock
+%post
+        export LANG=C.UTF-8
+        export LC_ALL=C.UTF-8
+        export PYTHONDONTWRITEBYTECODE=1
+        export PYTHONFAULTHANDLER=1
+        pip install --upgrade pip
+        pip install pipenv
+        PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy
+
+
+Bootstrap: docker
+From: python:3.10-alpine
 Stage: tagger
 
 %help
@@ -8,21 +25,25 @@ for container help:
 
 %labels
         Maintainer Michael Ringenberg <ringenberg@cmu.edu>
-        Version v3.1.5
+        Version v3.1.6
 
 %setup
         mkdir -p $SINGULARITY_ROOTFS/app
 
+%environment
+        export PATH="/.venv/bin:$PATH"
+
 %files
         app /
-	requirements.txt /
+#	requirements.txt /
 
-#%files from dictionary
-#        /app/static /app/dictionaries
+%files from deps
+       .venv /
 
 %post
-        pip install --upgrade pip
-	pip install --no-cache-dir --upgrade -r /requirements.txt
+        apk --update add mariadb-connector-c
+#       pip install --upgrade pip
+#	pip install --no-cache-dir --upgrade -r /requirements.txt
 
 %runscript
         exec python /app/cli.py $@

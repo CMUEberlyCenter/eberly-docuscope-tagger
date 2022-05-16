@@ -9,14 +9,14 @@
 %}
     {# We have untagged tokens, so let's output 'em. #}
     {% for token in tokens[untagged_tokens_index_start:untagged_tokens_index_end + 1] %}
-        {% set token_str = token[token_strs_index][token_str_to_output_index] %}
-        <span id="{{ token[1] }}">{{ token_str }}</span>
+        {% set token_str = token.strings[token_str_to_output_index] %}
+        <span id="{{ token.position }}">{{ token_str }}</span>
 
         {# Is this the last token? If so, update next_pos if it's
            going to be greater than the current next_pos after
            outputting these tokens. #}
         {% if loop.last %}
-            {% set next_pos_after_last_token = token[1] + token[2] %}
+            {% set next_pos_after_last_token = token.position + token.length %}
             {% if
                 next_pos is not defined or
                 (next_pos is defined and next_pos_after_last_token > next_pos and next_pos_after_last_token < s|length)

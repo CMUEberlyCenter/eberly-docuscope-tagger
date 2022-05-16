@@ -1,7 +1,9 @@
+""" Core class for Ity classes. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
 from abc import ABC
+from typing import Optional
 
 
 class BaseClass(ABC):
@@ -34,10 +36,9 @@ class BaseClass(ABC):
     """
     #__metaclass__ = abc.ABCMeta
 
-    def __init__(self, debug=False, label=None):
-        self.debug = debug
+    def __init__(self, label: Optional[str]=None):
         self._label = label
-        self._full_label = ""
+        self._full_label: str = ""
 
     @property
     def full_label(self):
@@ -76,5 +77,4 @@ class BaseClass(ABC):
         """
         if self._label is not None:
             return str(self._label)
-        else:
-            return self.__class__.__name__
+        return self.__class__.__name__

@@ -6,15 +6,23 @@ name = "pypi"
 [packages]
 python-docx = "*"
 Jinja2 = "*"
-SQLAlchemy = "*"
-mysqlclient = "*"
-email-validator = "*"
+SQLAlchemy = {extras = ["asyncio"], version = "*"}
 ujson = "*"
+jsondiff = "*"
+fastapi = "*"
+neo4j = "==5.0.0a1"
+hypercorn = "*"
+pandas = "*"
+pydantic = {extras = ["dotenv"], version = "*"}
+sse-starlette = "*"
+aiomysql = "*"
+emcache = "*"
 
 [dev-packages]
 pylint = "*"
 requests = "*"
 bandit = "*"
+autopep8 = "*"
 
 [requires]
-python_version = "3.9"
+python_version = "3.10"

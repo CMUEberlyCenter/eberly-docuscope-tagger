@@ -1,10 +1,11 @@
 """Schemas for the SQL DocuScope Writing Sidecar database."""
 import uuid
-from sqlalchemy import Boolean, Column, Enum, Integer, JSON, ForeignKey, \
-    LargeBinary, SmallInteger, String, TIMESTAMP, VARBINARY, exists
-from sqlalchemy.ext.declarative import declarative_base
+
+from sqlalchemy import (JSON, TIMESTAMP, VARBINARY, Boolean, Column, Enum,
+                        ForeignKey, Integer, LargeBinary, SmallInteger, String,
+                        exists)
+from sqlalchemy.orm import Session, declarative_base, relationship
 from sqlalchemy.types import TypeDecorator
-from sqlalchemy.orm import relationship, Session
 
 BASE = declarative_base()
 TINY_TEXT = String(255)
@@ -16,7 +17,8 @@ class UUID(TypeDecorator):
 
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    #pylint: disable=no-self-use
+    def process_bind_param(self, value, _dialect):
         """When binding the parameter, convert to bytes."""
         if value is None:
             return value
@@ -27,7 +29,8 @@ class UUID(TypeDecorator):
                 return uuid.UUID(bytes=value).bytes
             return uuid.UUID(value).bytes
         return value.bytes
-    def process_result_value(self, value, dialect):
+    #pylint: disable=no-self-use
+    def process_result_value(self, value, _dialect):
         """When processing results, convert to UUID."""
         if value is None:
             return value
@@ -35,7 +38,7 @@ class UUID(TypeDecorator):
             value = uuid.UUID(bytes=value)
         return value
 
-class Filesystem(BASE): #pylint: disable=R0903
+class Submission(BASE): #pylint: disable=R0903
     """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
@@ -53,8 +56,7 @@ class Filesystem(BASE): #pylint: disable=R0903
     pdf = Column(LargeBinary)
 
     def __repr__(self):
-        return "<File(id='{}', state='{}'>"\
-            .format(self.id, self.state)
+        return f"<File(id='{self.id}', state='{self.state}'>"
 
 class DSDictionary(BASE): #pylint: disable=R0903
     """A table of valid DocuScope dictionaries."""
@@ -65,7 +67,7 @@ class DSDictionary(BASE): #pylint: disable=R0903
     class_info = Column(JSON)
 
     def __repr__(self):
-        return "<DS_Dictionary(name='{}')>".format(self.name)
+        return f"<DS_Dictionary(name='{self.name}')>"
 
 class Assignment(BASE): #pylint: disable=R0903
     """The assignments table in the docuscope database."""
@@ -83,9 +85,8 @@ class Assignment(BASE): #pylint: disable=R0903
     report_stv_introduction = Column(String)
 
     def __repr__(self):
-        return "<Assignment(id='{}', name='{}', dictionary='{}', "\
-            .format(self.id, self.name, self.oli_id)
+        return "<Assignment(id='{self.id}', name='{self.name}', dictionary='{self.oli_id}'>"
 
 def id_exists(session: Session, file_id):
     """Check if the given file_id exists in the database."""
-    return session.query(exists().where(Filesystem.id == file_id)).scalar()
+    return session.query(exists().where(Submission.id == file_id)).scalar()

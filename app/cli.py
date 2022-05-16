@@ -1,20 +1,27 @@
 """Command line interface for DocuScope Tagger.
 Run with --help to see options.
 """
+#import cProfile
 import argparse
-from contextlib import contextmanager
 import logging
-from multiprocessing import Pool
+import time
 import traceback
 import uuid
+from contextlib import contextmanager
+from datetime import timedelta
+from multiprocessing import Pool
+from typing import Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.session import Session
+from sqlalchemy.sql.expression import update
 
-from default_settings import Config
-from ds_tagger import create_ds_tagger, tag_dict
-import ds_db
-import MSWord
+from .database import Submission
+from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
+from .docx_to_text import docx_to_text
+from .ds_tagger import create_ds_tagger
+from .ity.tagger import ItyTagger
 
 PARSER = argparse.ArgumentParser(
     prog="docuscope-tagger.sif",
@@ -37,16 +44,18 @@ logging.basicConfig(level=LEVELS[min(len(LEVELS)-1, ARGS.verbose)])
 ENGINE = None
 if ARGS.db:
     logging.info('Database settings from args')
-    ENGINE = create_engine("mysql+mysqldb://{}".format(ARGS.db))
+    ENGINE = create_engine(f"mysql+mysqldb://{ARGS.db}")
 else:
     logging.info('Database settings env')
-    ENGINE = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+    ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE)
+TAGGER: Optional[ItyTagger] = None
+
 
 @contextmanager
-def session_scope():
+def session_scope() -> Session:
     """Establish a scoped session for accessing the database."""
-    session = SESSION()
+    session: Session = SESSION()
     try:
         yield session
         session.commit()
@@ -56,7 +65,8 @@ def session_scope():
     finally:
         session.close()
 
-def tag_entry(tagger, doc_id):
+
+def tag_entry(tagger: ItyTagger, doc_id: str):
     """Use DocuScope tagger on the specified document.
     Arguments:
     doc_id: a uuid of the document in the database.
@@ -67,21 +77,24 @@ def tag_entry(tagger, doc_id):
     doc_state = "error"
     ENGINE.dispose()
     logging.info("Trying to tag %s", doc_id)
-    with session_scope() as session:
+    session: Session = SESSION()
+    with session.begin():
         # Removed retrieval of dictionary name.  Unused and NULL values crash #7
-        (doc_content,) = session.query(ds_db.Filesystem.content)\
-                     .filter(ds_db.Filesystem.id == doc_id).first()
+        subm = session.execute(select(Submission.content, Submission.name)
+                               .where(Submission.id == doc_id))
+        (doc_content, doc_name) = subm.first()
         if doc_content:
-            session.query(ds_db.Filesystem)\
-               .filter(ds_db.Filesystem.id == doc_id)\
-               .update({"state": "submitted"},
-                       synchronize_session=False)
+            session.execute(update(Submission).where(
+                Submission.id == doc_id).values(
+                state="submitted"))
         else:
             logging.error("Could not load %s!", doc_id)
             raise FileNotFoundError(doc_id)
     if doc_content:
         try:
-            doc_processed = tag_dict(tagger.tag_string(MSWord.toTOML(doc_content)))
+            if doc_name.endswith(".docx"):
+                doc_content = docx_to_text(doc_content)
+            doc_processed = tagger.tag(doc_content).dict()
             if doc_processed.get('ds_num_word_tokens', 0) == 0:
                 doc_state = "error"
                 doc_processed['error'] = 'Document failed to parse: no word tokens found.'
@@ -89,68 +102,73 @@ def tag_entry(tagger, doc_id):
             else:
                 doc_state = "tagged"
                 logging.info("Successfully tagged %s", doc_id)
-        except Exception as exc: #pylint: disable=W0703
+        except Exception as exc:  # pylint: disable=W0703
             logging.error("Unsuccessfully tagged %s", doc_id)
             traceback.print_exc()
-            doc_processed = {'error': "{0}".format(exc),
+            doc_processed = {'error': f"{exc}",
                              'trace': traceback.format_exc()}
             doc_state = "error"
-    with session_scope() as session:
-        session.query(ds_db.Filesystem)\
-               .filter_by(id=doc_id)\
-               .update({"processed": doc_processed,
-                        "state": doc_state})
+    with session.begin():
+        session.execute(update(Submission).where(
+            Submission.id == doc_id).values(
+            state=doc_state,
+            processed=doc_processed))
     logging.info("Finished tagging %s", doc_id)
 
-def valid_uuid(doc_id):
+
+def valid_uuid(doc_id: str):
     """Check if the given document id is a uuid string."""
     try:
         uuid.UUID(doc_id)
-        return True
     except ValueError as vexc:
         logging.warning("%s: %s", vexc, doc_id)
         return False
+    return True
 
-TAGGER = None
 
 def tag(doc_id):
     """ Wrapper function for tag_entry that includes the tagger. """
+    #cProfile.run(f"tag_entry(TAGGER, '{doc_id}')", 'profile')
     return tag_entry(TAGGER, doc_id)
+
 
 def run_tagger(args):
     """Gathers the document ids and runs the tagger on them (multitreaded)"""
-    ids = {id for id in args.uuid if valid_uuid(id)} # only uuids
-    with session_scope() as session:
+    ids = {id for id in args.uuid if valid_uuid(id)}  # only uuids
+    session: Session = SESSION()
+    with session.begin():
         # check if uuids are in database
-        valid_ids = {str(doc[0]) for doc in session.query(ds_db.Filesystem.id)
-                     .filter(ds_db.Filesystem.id.in_(ids))}
+        results = session.execute(
+            select(Submission.id).where(Submission.id.in_(ids)))
+        valid_ids = {str(id) for (id,) in results}
         check_ids = ids.difference(valid_ids)
         if check_ids:
-            logging.warning("Documents do not exist in database: %s", check_ids)
+            logging.warning(
+                "Documents do not exist in database: %s", check_ids)
         # If checking the database for 'pending' documents,
         # add all (limit max number) pending documents to list of ids
         if args.check_db:
+            query = select(Submission.id).where(Submission.state == 'pending')
             if args.max_db_documents > 0:
-                valid_ids.update([str(doc[0]) for doc in
-                                  session.query(ds_db.Filesystem.id)
-                                  .filter_by(state='pending')
-                                  .limit(args.max_db_documents)])
-
-            else:
-                valid_ids.update([str(doc[0]) for doc in
-                                  session.query(ds_db.Filesystem.id)
-                                  .filter_by(state='pending')])
+                query = query.limit(args.max_db_documents)
+            pending = session.execute(query)
+            valid_ids.update([str(id) for (id,) in pending])
     if valid_ids:
         # Create the tagger using default dictionary.
-        logging.info(f'Loading dictionary: {Config.DICTIONARY}')
-        global TAGGER
-        TAGGER = create_ds_tagger(Config.DICTIONARY)
-        logging.info(f'Loaded dictionary: {Config.DICTIONARY}')
+        logging.info('Loading dictionary: %s', SETTINGS.dictionary)
+        # Needs to be global to share as functools.partial does not work.
+        global TAGGER  # pylint: disable=global-statement
+        start = time.time()
+        TAGGER = create_ds_tagger(SETTINGS.dictionary)
+        logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
+                     timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
+        # tag(list(valid_ids)[0])
         with Pool() as pool:
             pool.map(tag, valid_ids)
     else:
         logging.info('No documents to tag.')
+
 
 if __name__ == '__main__':
     run_tagger(ARGS)

@@ -1,12 +1,41 @@
+""" Base Ity tagger class. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
 import abc
-from ..BaseClass import BaseClass
-from ..Tokenizers.Tokenizer import Tokenizer
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
+from pydantic.main import BaseModel
+
+from ..base import BaseClass
+from ..tokenizers.tokenizer import Token, Tokenizer, TokenType
 
 
-class Tagger(BaseClass):
+@dataclass
+class TaggerRule():
+    """Model for Tagger rules."""
+    # Note that the name and full_name values are intentionally invalid
+    # according to Tagger._is_valid_rule().
+    name: Optional[str] = None
+    full_name: Optional[str] = None
+    num_tags: int = 0
+    num_included_tokens: int = 0
+
+class TaggerTag(BaseModel): # pylint: disable=too-many-instance-attributes
+    """Model for Tagger tags."""
+    # Note that the index and pos values in this empty tag are intentionally
+    # invalid according to Tagger._is_valid_tag().
+    rules: List[Tuple[str, List[str]]] = []
+    index_start: int = -1
+    index_end: int = -1
+    len: int = 0
+    pos_start: int = -1
+    pos_end: int = -1
+    token_end_len: int = 0
+    num_included_tokens: int = 0
+
+class Tagger(BaseClass): # pylint: disable=too-many-instance-attributes
     """
     This is the Ity Tagger base class. It contains an abstract method, tag(),
     which accepts a list of tokens as input (as returned by an Ity
@@ -113,7 +142,7 @@ class Tagger(BaseClass):
     * A tag's "pos_end" value should represent the starting byte position of
       the last token in a tag. This could equal the value of "pos_start" for
       a single-token tag. Meanwhile, the tag's "token_end_len" value contains
-      the value of ``last_token_in_tag[Tokenizer.INDEXES["LENGTH"]]`` for
+      the value of ``last_token_in_tag.length`` for
       purposes of correctly capturing the range of chars from the original str
       that the tag encapsulates.
 
@@ -150,72 +179,31 @@ class Tagger(BaseClass):
     no_rules_rule_name = "!NORULES"
     excluded_rule_name = "!EXCLUDED"
 
-    # Note that the name and full_name values are intentionally invalid
-    # according to Tagger._is_valid_rule().
-    empty_rule = {
-        "name": None,
-        "full_name": None,
-        "num_tags": 0,
-        "num_included_tokens": 0
-    }
-
-    # Note that the index and pos values in this empty tag are intentionally
-    # invalid according to Tagger._is_valid_tag().
-    empty_tag = {
-        "rules": [],
-        "index_start": -1,
-        "index_end": -1,
-        "len": 0,
-        "pos_start": -1,
-        "pos_end": -1,
-        "token_end_len": 0,
-        "num_included_tokens": 0
-    }
-
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
-            debug=False,
-            label=None,
-            excluded_token_types=(),
-            case_sensitive=True,
-            untagged_rule_name=None,
-            no_rules_rule_name=None,
-            excluded_rule_name=None,
-            return_untagged_tags=False,
-            return_no_rules_tags=False,
-            return_excluded_tags=False,
-            return_included_tags=False
+            label: Optional[str] = None,
+            excluded_token_types: list[TokenType] = (),
+            case_sensitive: bool = True,
+            untagged_rule_name: Optional[str] = None,
+            no_rules_rule_name: Optional[str] = None,
+            excluded_rule_name: Optional[str] = None,
+            return_untagged_tags: bool = False,
+            return_no_rules_tags: bool = False,
+            return_excluded_tags: bool = False,
+            return_included_tags: bool = False
     ):
         """
         The Tagger constructor. Note the defaults---the Tagger base class is
         designed to return all "meta" rules and associated tags by default.
 
-        Make sure you call this in Tagger subclasses' __init__() methods using
-        Python 2.7.x's super() function::
-
-            super(CustomTagger, self).__init__(
-                debug=debug,
-                label=label,
-                excluded_token_types=excluded_token_types,
-                case_sensitive=case_sensitive,
-                untagged_rule_name=untagged_rule_name,
-                no_rules_rule_name=no_rules_rule_name,
-                excluded_rule_name=excluded_rule_name,
-                return_untagged_tags=return_untagged_tags,
-                return_no_rules_tags=return_no_rules_tags,
-                return_excluded_tags=return_excluded_tags,
-                return_included_tags=return_included_tags
-            )
-
-        :param debug: Whether or not to print debugging information.
-        :type debug: bool
         :param label: The label string identifying this module's return values.
         :type label: str
         :param excluded_token_types: Which token types, from
-                                     Ity.Tokenizers.Tokenizer.TYPES, to skip
+                                     Ity.Tokenizers.TokenType, to skip
                                      when tagging.
         :type excluded_token_types: tuple of ints, e.g.
-                                    (Tokenizer.TYPES["WHITESPACE"],)
+                                    (TokenType.WHITESPACE,)
         :param untagged_rule_name: The "meta" rule name to use for "untagged"
                                    tags, if they're being returned.
         :type untagged_rule_name: str
@@ -240,13 +228,13 @@ class Tagger(BaseClass):
         :return: A Tagger instance.
         :rtype Ity.Taggers.Tagger
         """
-        super(Tagger, self).__init__(debug, label)
+        super().__init__(label)
         # Make sure all the excluded token types are of a type that the Ity
         # Tokenizer base class "knows" about. This method raises ValueErrors
         # if it encounters an invalid token type.
         Tokenizer.validate_excluded_token_types(excluded_token_types)
         self.case_sensitive = case_sensitive
-        self.excluded_token_types = excluded_token_types
+        self.excluded_token_types = frozenset(excluded_token_types)
         # The tokens given to self.tag() should be set to this instance field
         # so that private helper methods may have access to them.
         self.tokens = []
@@ -258,6 +246,14 @@ class Tagger(BaseClass):
         self.return_no_rules_tags = return_no_rules_tags
         self.return_excluded_tags = return_excluded_tags
         self.return_included_tags = return_included_tags
+        excluded_meta_rule_names = []
+        if not self.return_untagged_tags:
+            excluded_meta_rule_names.append(self.untagged_rule_name)
+        if not self.return_no_rules_tags:
+            excluded_meta_rule_names.append(self.no_rules_rule_name)
+        if not self.return_excluded_tags:
+            excluded_meta_rule_names.append(self.excluded_rule_name)
+        self.excluded_meta_rule_names = frozenset(excluded_meta_rule_names)
         # Support for giving "meta" rules custom names.
         # Either use the name/s given to the constructor, or use this Tagger
         # class's default names.
@@ -273,6 +269,11 @@ class Tagger(BaseClass):
             self.excluded_rule_name = excluded_rule_name
         else:
             self.excluded_rule_name = Tagger.excluded_rule_name
+        self.meta_rule_names = frozenset([
+            self.untagged_rule_name,
+            self.no_rules_rule_name,
+            self.excluded_rule_name
+        ])
         # Append some information to self._full_label.
         self._full_label += ".".join([
             str(setting)
@@ -286,7 +287,7 @@ class Tagger(BaseClass):
         ])
 
     @property
-    def meta_rule_names(self):
+    def meta_rule_names_list(self) -> list[str]:
         """
         A property containing the list of all "meta" rules.
 
@@ -300,7 +301,7 @@ class Tagger(BaseClass):
         ]
 
     @property
-    def excluded_meta_rule_names(self):
+    def excluded_meta_rule_names_list(self) -> list[str]:
         """
         A property containing the list of "meta" rule names which are to be
         excluded from the output of self.tag().
@@ -318,10 +319,10 @@ class Tagger(BaseClass):
             excluded_meta_rule_names.append(self.excluded_rule_name)
         return excluded_meta_rule_names
 
-    def _should_return_rule(self, rule):
+    def _should_return_rule(self, rule: TaggerRule) -> bool:
         """
         A convenient method to determine if self.tag() should return a
-        particular rule (and its corresponding tag). It should return it if:
+        particular rule (and its corresponding tag). It should return True if:
 
         * The rule's name is NOT in self.excluded_meta_rule_names AND
         * self.return_included_tags is True OR self.return_included_tags is
@@ -331,14 +332,11 @@ class Tagger(BaseClass):
         :return: True if the Tagger should return the rule, False otherwise.
         :rtype: bool
         """
-        return rule["name"] not in self.excluded_meta_rule_names and (
-            self.return_included_tags or (
-                not self.return_included_tags and
-                rule["name"] in self.meta_rule_names
-            )
+        return rule.name not in self.excluded_meta_rule_names and (
+            self.return_included_tags or rule.name in self.meta_rule_names
         )
 
-    def _is_valid_rule(self, rule):
+    def _is_valid_rule(self, rule: Optional[TaggerRule]) -> bool:
         """
         A convenient method to validate a rule dict. Rule dicts must contain:
 
@@ -358,19 +356,14 @@ class Tagger(BaseClass):
         """
         return (
             rule is not None and
-            "name" in rule and
-            type(rule["name"]) is str and
-            "full_name" in rule and
-            type(rule["full_name"]) is str and
-            rule["full_name"].startswith(self.full_label) and
-            "num_tags" in rule and
-            type(rule["num_tags"]) is int and
-            rule["num_tags"] >= 0 and
-            type(rule["num_included_tokens"]) is int and
-            rule["num_included_tokens"] >= 0
+            rule.name is not None and
+            rule.full_name is not None and
+            rule.full_name.startswith(self.full_label) and
+            rule.num_tags >= 0 and
+            rule.num_included_tokens >= 0
         )
 
-    def _is_valid_tag(self, tag):
+    def _is_valid_tag(self, tag: Optional[TaggerTag]) -> bool:
         """
         A convenient method to validate a tag dict. Tag dicts must contain:
 
@@ -388,18 +381,20 @@ class Tagger(BaseClass):
         """
         return (
             tag is not None and
-            tag["rules"] is not None and
-            len(tag["rules"]) > 0 and
-            0 <= tag["index_start"] < len(self.tokens) and
-            tag["index_start"] <= tag["index_end"] < len(self.tokens) and
-            tag["len"] > 0 and
-            tag["pos_start"] >= 0 and
-            tag["pos_end"] >= 0 and
-            tag["pos_start"] <= tag["pos_end"] and
-            tag["token_end_len"] > 0
+            len(tag.rules) > 0 and
+            0 <= tag.index_start < len(self.tokens) and
+            tag.index_start <= tag.index_end < len(self.tokens) and
+            tag.len > 0 and
+            tag.pos_start >= 0 and
+            tag.pos_end >= 0 and
+            tag.pos_start <= tag.pos_end and
+            tag.token_end_len > 0
         )
 
-    def _get_nth_next_included_token_index(self, starting_token_index=None, n=1):
+    def _get_nth_next_included_token_index(
+            self,
+            starting_token_index: Optional[int]=None,
+            offset: int=1) -> Optional[int]:
         """
         A helper method to get the index of the next token that is not an
         excluded token type, given a starting token index (or self.token_index).
@@ -408,8 +403,8 @@ class Tagger(BaseClass):
                                      if None, we'll use self.token_index.
         :type starting_token_index: non-negative int that's less than
                                     len(self.tokens) or None
-        :param n: The nth token from the starting token index.
-        :type n: int > 0
+        :param offset: The nth token from the starting token index.
+        :type offset: int > 0
         :return: The index of the nth next included token. None if we can't
                  the appropriate index for whatever reason.
         :rtype: non-negative int that's less than len(self.tokens) or None
@@ -417,22 +412,35 @@ class Tagger(BaseClass):
         if starting_token_index is None:
             starting_token_index = self.token_index
         next_token_index = starting_token_index
-        while n > 0:
+        while offset > 0:
             next_token_index += 1
             # Don't go beyond the bounds of the tokens list!
             if next_token_index >= len(self.tokens):
                 break
             next_token = self.tokens[next_token_index]
-            if next_token[Tokenizer.INDEXES["TYPE"]] not in self.excluded_token_types:
-                n -= 1
+            if next_token.type not in self.excluded_token_types:
+                offset -= 1
         # Did we actually get the nth next token index?
-        if n > 0:
+        if offset > 0:
             return None
-        else:
-            return next_token_index
+        return next_token_index
+
+    def get_next_tokens_in_range(self, start: int, end: int) -> list[Token]:
+        """Get the list of tokens from the current index plus m to n.
+
+        Note: the number of tokens returned will only be as long as
+        the available tokens and thus the length of the resulting list
+        might be less than n-m."""
+        tokens = []
+        token_index = self._get_nth_next_included_token_index(offset=start)
+        while (token_index is not None) and (start < end):
+            tokens.append(self.tokens[token_index])
+            token_index = self._get_nth_next_included_token_index(starting_token_index=token_index)
+            start += 1
+        return tokens
 
     @abc.abstractmethod
-    def tag(self, tokens):
+    async def tag(self, tokens: list[Token]) -> tuple[dict[str,TaggerRule], list[TaggerTag]]:
         """
         An abstract method where all the tagging of the tokens list happens.
         It's recommended to assign the tokens argument to self.tokens
@@ -441,10 +449,16 @@ class Tagger(BaseClass):
 
         :param tokens: A list of tokens returned by an Ity Tokenizer's
                        tokenize() method.
-        :type tokens: list of lists (that look like Ity Tokenizer token lists)
-        :return: In order: rule, a dict of dicts (that look like
-                 Tagger.empty_rule), and tags, a list of dicts (that look like
-                 Tagger.empty_tag).
-        :rtype: dict of dicts and list of dicts
+        :type tokens: list of Tokens.
+        :return: In order: rule, a dict of Tagger Rules,
+                 and tags, a list of Tagger Tags.
+        :rtype: dict of TaggerRules and list of TaggerTags
         """
         return {}, []
+
+    def reset(self):
+        """Reset the tagging state."""
+        self.tokens = []
+        self.token_index = 0
+        self.rules = {}
+        self.tags = []

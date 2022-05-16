@@ -1,11 +1,16 @@
+""" Base class for Ity formatters which output the tagged text. """
 # coding=utf-8
 __author__ = 'kohlmannj'
 
 import abc
-from ..BaseClass import BaseClass
+from typing import Optional
+
+from ..taggers.tagger import TaggerRule, TaggerTag
+from ..tokenizers.tokenizer import Token
+from ..base import BaseClass
 
 
-class Formatter(BaseClass):
+class ItyFormatter(BaseClass):
     """
     This is the Ity Formatter base class. It contains an abstract method,
     format(), which accepts several input values, including rules, tags,
@@ -50,18 +55,15 @@ class Formatter(BaseClass):
 
     * **Paginated** templates output directories.**
     """
+    # pylint: disable=too-many-arguments
     def __init__(
             self,
-            debug=False,
-            label=None,
-            token_str_index=-1,
-            token_whitespace_newline_str_index=0,
-            standalone=True,
-            paginated=False):
-        super().__init__(
-            debug=debug,
-            label=label
-        )
+            label: Optional[str]=None,
+            token_str_index: int=-1,
+            token_whitespace_newline_str_index: int=0,
+            standalone: bool=True,
+            paginated: bool=False):
+        super().__init__(label=label)
         self.token_str_index = token_str_index
         self.token_whitespace_newline_str_index = token_whitespace_newline_str_index
         self.standalone = standalone
@@ -70,9 +72,8 @@ class Formatter(BaseClass):
     @abc.abstractmethod
     def format(
             self,
-            output_path=None,
-            rules=None,
-            tags=None,
-            tokens=None,
-            text_str=None):
-        return
+            tags: Optional[tuple[dict[str, TaggerRule], list[TaggerTag]]] = None,
+            tokens: Optional[list[Token]] = None,
+            text_str: Optional[str] = None) -> str:
+        """ Compose output. """
+        return ""

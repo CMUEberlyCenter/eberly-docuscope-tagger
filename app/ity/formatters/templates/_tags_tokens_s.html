@@ -17,7 +17,7 @@
 
         {# Begin tag opening wrapper #}
         {% set rules = [] %}
-        {% for rule_tuple in tag["rules"] %}
+        {% for rule_tuple in tag.rules %}
             {% set rule = rule_tuple[0] %}
             {% set rule_short = rule|pithify %}
             {% do rules.append(rule_short) %}
@@ -35,12 +35,12 @@
 
         {# Output tagged tokens mapped to this tag. #}
         {% for token in tokens[tag.index_start:tag.index_end + 1] %}
-            {% if token[token_type_index] == token_types["WHITESPACE"] or token[token_type_index] == token_types["NEWLINE"] %}
-                {% set token_str = token[token_strs_index][token_whitespace_newline_str_to_output_index] %}
+            {% if token.type == token_types["WHITESPACE"] or token.type == token_types["NEWLINE"] %}
+                {% set token_str = token.strings[token_whitespace_newline_str_to_output_index] %}
             {% else %}
-                {% set token_str = token[token_strs_index][token_str_to_output_index] %}
+                {% set token_str = token.strings[token_str_to_output_index] %}
             {% endif %}
-            <span id="{{ token[1] }}" class="token">{{ token_str }}</span>
+            <span id="{{ token.position }}" class="token">{{ token_str }}</span>
         {% endfor %}
 
         {# Begin tag closing wrapper #}
