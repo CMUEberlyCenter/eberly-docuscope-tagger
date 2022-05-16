@@ -59,11 +59,11 @@ app = FastAPI(
     })
 
 app.add_middleware(
-   CORSMiddleware,
-   allow_origins=['*'],
-   allow_credentials=True,
-   allow_methods=['GET', 'POST'],
-   allow_headers=['*'])
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['GET', 'POST'],
+    allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
 
 
@@ -155,7 +155,7 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
     # pylint: disable=too-many-locals
     start_time = perf_counter()
     doc_id = uuid1()
-    text = re.sub(r'\n\s*\n', ' PZPZPZ\n\n', text) # detect paragraph breaks.
+    text = re.sub(r'\n\s*\n', ' PZPZPZ\n\n', text)  # detect paragraph breaks.
     tokens = RegexTokenizer().tokenize(text)
     tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
@@ -225,8 +225,9 @@ async def tag_document(  # pylint: disable=too-many-locals
         await sql.execute(update(Submission).where(Submission.id == doc_id)
                           .values(state='submitted'))
         await sql.commit()
-        yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
-                              event='submitted').dict()
+        if not await request.is_disconnected():
+            yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
+                                  event='submitted').dict()
         try:
             if name.endswith(".docx"):
                 doc_content = docx_to_text(doc_content)
@@ -236,24 +237,23 @@ async def tag_document(  # pylint: disable=too-many-locals
                                         return_included_tags=True, wordclasses=WORDCLASSES,
                                         session=neo, cache=cache)
             tagger_gen = tagger.tag_next(tokens)
-            timeout = start_time + 1 # perf_counter returns seconds.
+            timeout = start_time + 1  # perf_counter returns seconds.
             while True:
-                if await request.is_disconnected():
-                    logging.info("Client Disconnected!")
-                    return
                 try:
                     indx = await tagger_gen.asend(None)
                 except StopAsyncIteration:
                     break
                 if perf_counter() > timeout:
                     timeout = perf_counter() + 1
-                    yield ServerSentEvent(
-                        event='processing',
-                        data=Message(
-                            doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
-                    ).dict()
-            yield ServerSentEvent(event='processing',
-                                  data=Message(doc_id=doc_id, status='100').json()).dict()
+                    if not await request.is_disconnected():
+                        yield ServerSentEvent(
+                            event='processing',
+                            data=Message(
+                                doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
+                        ).dict()
+            if not await request.is_disconnected():
+                yield ServerSentEvent(event='processing',
+                                      data=Message(doc_id=doc_id, status='100').json()).dict()
             output = SimpleHTMLFormatter().format(tags=(tagger.rules, tagger.tags),
                                                   tokens=tokens, text_str=doc_content)
         except Exception as exc:
@@ -291,10 +291,13 @@ async def tag_document(  # pylint: disable=too-many-locals
             )).dict()
         ))
         await sql.commit()
-        yield ServerSentEvent(
-            event='done',
-            data=Message(doc_id=doc_id,
-                         status=str(timedelta(seconds=perf_counter() - start_time))).json()).dict()
+        if not await request.is_disconnected():
+            yield ServerSentEvent(
+                event='done',
+                data=Message(doc_id=doc_id,
+                             status=str(
+                                 timedelta(seconds=perf_counter() - start_time))
+                             ).json()).dict()
     else:
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='error',
@@ -305,9 +308,11 @@ async def tag_document(  # pylint: disable=too-many-locals
             }
         ))
         await sql.commit()
-        yield ServerSentEvent(
-            event='error',
-            data=Message(doc_id=doc_id, message=f"No content in document: {name}!").json()).dict()
+        if not await request.is_disconnected():
+            yield ServerSentEvent(
+                event='error',
+                data=Message(doc_id=doc_id,
+                             message=f"No content in document: {name}!").json()).dict()
 
 
 @app.get("/tag/{uuid}", response_model=Message)
@@ -371,23 +376,12 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
                 logging.info("Tagging %s", docid)
                 tag_next = tag_document(docid, request, sql, neo, cache)
                 while True:
-                    if await request.is_disconnected():
-                        logging.info("Client Disconnected!")
-                        while True:
-                            try:
-                                # Exhaust tagging without yielding
-                                # This would probably be better dones as a
-                                # background task, but given that the request
-                                # is no longer pending due to being disconnected
-                                # then doing the processing here should not be
-                                # an issue.  There might be some overhead that
-                                # makes this less than ideal.
-                                await tag_next.asend(None)
-                            except StopAsyncIteration:
-                                break
-                        break # ensure cleanup
                     try:
-                        yield await tag_next.asend(None)
+                        if await request.is_disconnected():
+                            # continue but do not yield
+                            await tag_next.asend(None)
+                        else:
+                            yield await tag_next.asend(None)
                     except StopAsyncIteration:
                         break
             else:
