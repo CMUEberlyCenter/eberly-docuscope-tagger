@@ -1,4 +1,5 @@
 """ The online DocuScope tagger interface. """
+import asyncio
 import cProfile
 import logging
 import re
@@ -549,8 +550,6 @@ app.mount('/static', StaticFiles(directory="app/static", html=True))
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    import asyncio
-
     from hypercorn.asyncio import serve
     from hypercorn.config import Config
     config = Config()
