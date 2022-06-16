@@ -283,10 +283,10 @@ async def tag_document(  # pylint: disable=too-many-locals
                 num_tokens=len(tokens),
                 num_word_tokens=type_count[TokenType.WORD],
                 num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
-                num_included_tokens=sum([type_count[itype]
-                                        for itype in not_excluded]),
+                num_included_tokens=sum(type_count[itype]
+                                        for itype in not_excluded),
                 num_excluded_tokens=sum(
-                    [type_count[etype] for etype in tokenizer.excluded_token_types]),
+                    type_count[etype] for etype in tokenizer.excluded_token_types),
                 tag_chain=[tag.rules[0][0].split(
                     '.')[-1] for tag in tagger.tags]
             )).dict()
@@ -521,10 +521,10 @@ async def check_tagging(  # pylint: disable=too-many-locals
             num_tokens=len(tokens),
             num_word_tokens=type_count[TokenType.WORD],
             num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
-            num_included_tokens=sum([type_count[itype]
-                                    for itype in not_excluded]),
-            num_excluded_tokens=sum([type_count[etype]
-                                     for etype in tokenizer.excluded_token_types]),
+            num_included_tokens=sum(type_count[itype]
+                                    for itype in not_excluded),
+            num_excluded_tokens=sum(type_count[etype]
+                                    for etype in tokenizer.excluded_token_types),
             tag_chain=[tag.rules[0][0].split('.')[-1] for tag in tagger.tags]
         )).dict()
         tag_diff = diff(processed, test_processed)
