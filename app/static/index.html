@@ -1,96 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
 
-<head>
+  <head>
     <meta charset="utf-8" />
     <title>DocuScope Online Tagger Proof of Concept</title>
     <style>
-        #tag_results {
-            min-height: 4em;
-            border: 1px solid black;
-        }
+      #tag_results {
+          min-height: 4em;
+          border: 1px solid black;
+      }
     </style>
     <script>
-        function submit() {
-            const results = document.getElementById('tag_results');
-            results.innerHTML = "Tagging...";
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", '/tag', true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            const text = document.getElementById('input_text').value;
-            let position = 0;
-            xhr.addEventListener('progress', (ev) => {
-                if (!xhr) return;
-                if (xhr.status !== 200) {
-                    // do error
+      function submit() {
+        const results = document.getElementById('tag_results');
+        results.innerHTML = "Tagging...";
+        const xhr = new XMLHttpRequest();
+        // base tag url on this page's location
+        const tag = window.location.pathname.replace(/static.*$/, 'tag')
+        xhr.open("POST", tag, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        const text = document.getElementById('input_text').value;
+        let position = 0;
+        xhr.addEventListener('progress', (ev) => {
+          if (!xhr) return;
+          if (xhr.status !== 200) {
+            // do error
+            return;
+          }
+          const data = xhr.responseText.substring(position);
+          position += data.length;
+          let chunk = '';
+          const evt = { id: null, retry: null, data: '', event: 'message' };
+          data.split(/(\r\n|\r|\n){2}/g).forEach((part) => {
+            if (part.trim().length === 0) {
+              // process chunk
+              if (chunk && chunk.length > 0) {
+                chunk.split(/\n|\r\n|\r/).forEach((line) => {
+                  line = line.trimRight();
+                  let index = line.indexOf(':');
+                  if (index <= 0) {
+                    // ignore non-fields
                     return;
-                }
-                const data = xhr.responseText.substring(position);
-                position += data.length;
-                let chunk = '';
-                const evt = { id: null, retry: null, data: '', event: 'message' };
-                data.split(/(\r\n|\r|\n){2}/g).forEach((part) => {
-                    if (part.trim().length === 0) {
-                        // process chunk
-                        if (chunk && chunk.length > 0) {
-                            chunk.split(/\n|\r\n|\r/).forEach((line) => {
-                                line = line.trimRight();
-                                let index = line.indexOf(':');
-                                if (index <= 0) {
-                                    // ignore non-fields
-                                    return;
-                                }
-                                var field = line.substring(0, index);
-                                if (!(field in evt)) {
-                                    console.log(`Unhandled field: ${field}`);
-                                    return;
-                                }
-                                var value = line.substring(index + 1).trimLeft();
-                                if (field === 'data') {
-                                    evt[field] += value;
-                                } else {
-                                    evt[field] = value;
-                                }
-                            });
-                        }
-                        chunk = '';
-                    } else {
-                        chunk += part;
-                    }
+                  }
+                  var field = line.substring(0, index);
+                  if (!(field in evt)) {
+                    console.log(`Unhandled field: ${field}`);
+                    return;
+                  }
+                  var value = line.substring(index + 1).trimLeft();
+                  if (field === 'data') {
+                    evt[field] += value;
+                  } else {
+                    evt[field] = value;
+                  }
                 });
-                if (evt.event === 'processing') {
-                    const payload = JSON.parse(evt.data);
-                    results.innerHTML += `${payload.status}...`;
-                } else if (evt.event === 'done') {
-                    console.log(evt.data);
-                    const payload = JSON.parse(evt.data);
-                    results.innerHTML = payload.html_content;
-                } else {
-                    console.log(`Unhandled event: ${evt}`);
-                }
-            });
-            xhr.onerror = function (err) {
-                console.error(err);
-                results.innerHTML = "ERROR!";
+              }
+              chunk = '';
+            } else {
+              chunk += part;
             }
-            xhr.send(JSON.stringify({ text: text }));
+          });
+          if (evt.event === 'processing') {
+            const payload = JSON.parse(evt.data);
+            results.innerHTML += `${payload.status}...`;
+          } else if (evt.event === 'done') {
+            console.log(evt.data);
+            const payload = JSON.parse(evt.data);
+            results.innerHTML = payload.html_content;
+          } else {
+            console.log(`Unhandled event: ${evt}`);
+          }
+        });
+        xhr.onerror = function (err) {
+          console.error(err);
+          results.innerHTML = "ERROR!";
         }
+        xhr.send(JSON.stringify({ text: text }));
+      }
     </script>
-</head>
+  </head>
 
-<body>
+  <body>
     <header>
-        <h1>DocuScope Online Tagger Proof of Concept</h1>
+      <h1>DocuScope Online Tagger Proof of Concept</h1>
     </header>
     <article>
-        <h2>Enter text:</h2>
-        <textarea id="input_text" rows="20" cols="60"></textarea>
-        <button onclick="submit()">Submit</button>
+      <h2>Enter text:</h2>
+      <textarea id="input_text" rows="20" cols="60"></textarea>
+      <button onclick="submit()">Submit</button>
     </article>
     <article>
-        <h2>Tagging Results:</h2>
-        <div id="tag_results"></div>
+      <h2>Tagging Results:</h2>
+      <div id="tag_results"></div>
     </article>
-</body>
+  </body>
 
 </html>
