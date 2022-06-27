@@ -26,7 +26,7 @@ python-dotenv==0.20.0
 pytz==2022.1
 six==1.16.0
 sniffio==1.2.0
-sqlalchemy[asyncio]==1.4.38
+sqlalchemy[asyncio]==1.4.39
 sse-starlette==0.10.3
 starlette==0.19.1
 toml==0.10.2
