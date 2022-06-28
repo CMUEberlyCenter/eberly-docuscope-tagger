@@ -1,6 +1,6 @@
 """ Generates the DataFrames from the common dictionary and tones. """
 from lxml import etree # nosec
-from lxml.html import Classes
+from lxml.html import Classes #nosec
 import pandas as pd
 
 from .common_dictionary import get_common_frame
