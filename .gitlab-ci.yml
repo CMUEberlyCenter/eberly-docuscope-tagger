@@ -26,7 +26,6 @@ pylint:
     - python -m pip install --user pipenv
   script:
     - PIPENV_VENV_IN_PROJECT=1 python -m pipenv install --dev
-    - python -m pipenv check
     - python -m pipenv run pylint app
   allow_failure: true
 
