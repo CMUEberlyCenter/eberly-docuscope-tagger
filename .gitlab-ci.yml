@@ -23,11 +23,11 @@ pylint:
   image: python:latest
   before_script:
     - python -m pip install --upgrade pip
-    - python -m pip install --user --upgrade pipx
-    - python -m pipx ensurepath
+    - python -m pip install --user pipenv
   script:
-    - PIPENV_VENV_IN_PROJECT=1 python -m pipx run pipenv install --deploy 
-    - python -m pipx run pylint app
+    - PIPENV_VENV_IN_PROJECT=1 python -m pipenv install --dev
+    - python -m pipenv check
+    - python -m pipenv run pylint app
   allow_failure: true
 
 build:

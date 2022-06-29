@@ -180,11 +180,6 @@ async def run_tagger(args):
             pending = await session.stream(query)
             valid_ids.update([str(id) async for (id,) in pending])
     if valid_ids:
-        # Create the tagger using default dictionary.
-        #logging.info('Loading dictionary: %s', SETTINGS.dictionary)
-        #start = time.time()
-        # logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
-        #             timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
         cache = None
         try:
