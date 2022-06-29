@@ -76,18 +76,18 @@ async def tag(doc_content: str, cache: Optional[emcache.Client]):
     type_count = Counter([token.type for token in tokens])
     not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
     return tag_json(ItyTaggerResult(
-        text_contents=doc_content,
         format_output=output,
-        tag_dict=tagger.rules,
-        num_tokens=len(tokens),
-        num_word_tokens=type_count[TokenType.WORD],
-        num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
-        num_included_tokens=sum(type_count[itype]
-                                for itype in not_excluded),
         num_excluded_tokens=sum(
             type_count[etype] for etype in tokenizer.excluded_token_types),
+        num_included_tokens=sum(type_count[itype]
+                                for itype in not_excluded),
+        num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
+        num_tokens=len(tokens),
+        num_word_tokens=type_count[TokenType.WORD],
         tag_chain=[tag.rules[0][0].split(
-            '.')[-1] for tag in tagger.tags]
+            '.')[-1] for tag in tagger.tags],
+        tag_dict=tagger.rules,
+        text_contents=doc_content
     )).dict()
 
 async def tag_entry(doc_id: str, cache: Optional[emcache.Client]):
