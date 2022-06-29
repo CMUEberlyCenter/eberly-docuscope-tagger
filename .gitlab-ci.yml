@@ -26,8 +26,8 @@ pylint:
     - python -m pip install --user --upgrade pipx
     - python -m pipx ensurepath
   script:
-    - PIPENV_VENV_IN_PROJECT=1 pipx run pipenv install --deploy 
-    - pipx run pylint app
+    - PIPENV_VENV_IN_PROJECT=1 python -m pipx run pipenv install --deploy 
+    - python -m pipx run pylint app
   allow_failure: true
 
 build:
