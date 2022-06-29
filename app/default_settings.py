@@ -12,12 +12,12 @@ class Settings(BaseSettings):
         os.path.dirname(__file__), 'dictionaries')
     db_host: str = '127.0.0.1'
     db_port: int = 3306
-    db_password: SecretStr = 'docuscope'
+    db_password: SecretStr = None
     db_user: str = 'docuscope'
     memcache_url: str = 'localhost'
     memcache_port: int = 11211
     mysql_database: str = 'docuscope'
-    neo4j_password: SecretStr = ''
+    neo4j_password: SecretStr = None
     neo4j_user: str = 'neo4j'
     neo4j_uri: stricturl(tld_required=False,
                          allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
