@@ -49,9 +49,15 @@
                   }
                   var value = line.substring(index + 1).trimLeft();
                   if (field === 'data') {
-                    evt[field] += value;
+                    evt.data += value;
+                  } else if (field === 'id') {
+                    evt.id = value;
+                  } else if (field === 'retry') {
+                    evt.retry = value;
+                  } else if (field === 'event') {
+                    evt.event = value;
                   } else {
-                    evt[field] = value;
+                    console.warn(`Ignoring unknown field: ${field} - ${value}`);
                   }
                 });
               }

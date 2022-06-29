@@ -506,10 +506,10 @@ class RegexTokenizer(Tokenizer):
             start = match.start()
 
             # The text content of the whole capture.
-            tokens_str = match.group()
+            group = match.group()
 
             # Skip apparently empty captures.
-            if tokens_str == "":
+            if group == "":
                 continue
 
             # Save the [original] char length of the entire captured string.
@@ -526,7 +526,7 @@ class RegexTokenizer(Tokenizer):
             # the token type, e.g. TokenType.WORD) will be added
             # by one of the self._format_token_*() helper methods.
             single_token_list = Token(
-                strings = [tokens_str],
+                strings = [group],
                 position = start,
                 length = length,
                 type = None)

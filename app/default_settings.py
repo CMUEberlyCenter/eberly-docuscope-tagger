@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     memcache_url: str = 'localhost'
     memcache_port: int = 11211
     mysql_database: str = 'docuscope'
-    neo4j_password: SecretStr = 'docuscope'
+    neo4j_password: SecretStr = ''
     neo4j_user: str = 'neo4j'
     neo4j_uri: stricturl(tld_required=False,
                          allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',

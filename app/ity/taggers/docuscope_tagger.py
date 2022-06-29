@@ -2,6 +2,7 @@
 # coding=utf-8
 
 from itertools import product
+import logging
 from typing import Optional
 
 from pydantic.main import BaseModel
@@ -64,6 +65,9 @@ class DocuscopeTagger(DocuscopeTaggerBase):
                 rule_dict = self.rules_db[token_ds_word][next_token_ds_word]
             except KeyError:
                 continue # skip if rule for given pair does not exist
+            except Exception as exp:
+                logging.error(exp)
+                raise
             for ds_lat, ds_rules in rule_dict.items():
                 for ds_partial_rule in ds_rules:
                     # reconstruct full path
