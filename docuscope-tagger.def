@@ -47,3 +47,4 @@ for container help:
 
 %runscript
         exec python /app/cli.py $@
+        # exec pipenv run python -m app.cli $@

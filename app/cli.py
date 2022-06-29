@@ -1,27 +1,31 @@
 """Command line interface for DocuScope Tagger.
 Run with --help to see options.
 """
-#import cProfile
 import argparse
+#import cProfile
+import asyncio
 import logging
-import time
 import traceback
 import uuid
-from contextlib import contextmanager
-from datetime import timedelta
-from multiprocessing import Pool
+from collections import Counter
 from typing import Optional
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.session import Session
+import emcache
+from neo4j import AsyncGraphDatabase
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
+                                    create_async_engine)
 from sqlalchemy.sql.expression import update
 
 from .database import Submission
 from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
-from .ds_tagger import create_ds_tagger
-from .ity.tagger import ItyTagger
+from .ds_tagger import get_wordclasses
+from .ity.formatters.simple_html_formatter import SimpleHTMLFormatter
+from .ity.tagger import ItyTaggerResult, tag_json
+from .ity.taggers.docuscope_tagger_neo import DocuscopeTaggerNeo
+from .ity.tokenizers.regex_tokenizer import RegexTokenizer
+from .ity.tokenizers.tokenizer import TokenType
 
 PARSER = argparse.ArgumentParser(
     prog="docuscope-tagger.sif",
@@ -29,72 +33,92 @@ PARSER = argparse.ArgumentParser(
 PARSER.add_argument("uuid", nargs='*',
                     help="The id of a document in the DocuScope database.")
 # no default in following so as to not reveal password.
-PARSER.add_argument(
-    "--db",
-    help="URI of the database. <user>:<pass>@<url>:<port>/<database>")
+#PARSER.add_argument( # from .env
+#    "--db",
+#    help="URI of the database. <user>:<pass>@<url>:<port>/<database>")
 PARSER.add_argument('-c', '--check_db', action='store_true',
                     help="Check the database for any 'pending' documents.")
 PARSER.add_argument('-m', '--max_db_documents', type=int, default=-1,
                     help="Maximum number of 'pending' documents to process.")
+#PARSER.add_argument('-r', '--rule_db', help="Rule Database URI.") # from .env
+#PARSER.add_argument('--memcache', help="Memcache URI.") # from .env
 PARSER.add_argument('-v', '--verbose', help="Increase output verbosity.",
                     action="count", default=0)
 ARGS = PARSER.parse_args()
 LEVELS = [logging.WARNING, logging.INFO, logging.DEBUG]
 logging.basicConfig(level=LEVELS[min(len(LEVELS)-1, ARGS.verbose)])
-ENGINE = None
-if ARGS.db:
-    logging.info('Database settings from args')
-    ENGINE = create_engine(f"mysql+mysqldb://{ARGS.db}")
-else:
-    logging.info('Database settings env')
-    ENGINE = create_engine(SQLALCHEMY_DATABASE_URI)
-SESSION = sessionmaker(bind=ENGINE)
-TAGGER: Optional[ItyTagger] = None
 
+ENGINE: AsyncEngine = create_async_engine(SQLALCHEMY_DATABASE_URI)
 
-@contextmanager
-def session_scope() -> Session:
-    """Establish a scoped session for accessing the database."""
-    session: Session = SESSION()
-    try:
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
+DRIVER = AsyncGraphDatabase.driver(
+    SETTINGS.neo4j_uri,
+    auth=(SETTINGS.neo4j_user,
+          SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
 
+WORDCLASSES = get_wordclasses()
 
-def tag_entry(tagger: ItyTagger, doc_id: str):
+async def tag(doc_content: str, cache: Optional[emcache.Client]):
+    """Construct and run the tagger on the given text."""
+    tokenizer = RegexTokenizer()
+    tokens = tokenizer.tokenize(doc_content)
+    tagger = DocuscopeTaggerNeo(
+        return_untagged_tags=False,
+        return_no_rules_tags=True,
+        return_included_tags=True,
+        wordclasses=WORDCLASSES,
+        session=DRIVER.session(),
+        cache=cache)
+    tagger.wordclasses = WORDCLASSES
+    rules, tags = await tagger.tag(tokens)
+    await tagger.session.close()
+    output = SimpleHTMLFormatter().format(
+        tags=(rules, tags), tokens=tokens, text_str=doc_content)
+    type_count = Counter([token.type for token in tokens])
+    not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
+    return tag_json(ItyTaggerResult(
+        text_contents=doc_content,
+        format_output=output,
+        tag_dict=tagger.rules,
+        num_tokens=len(tokens),
+        num_word_tokens=type_count[TokenType.WORD],
+        num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
+        num_included_tokens=sum(type_count[itype]
+                                for itype in not_excluded),
+        num_excluded_tokens=sum(
+            type_count[etype] for etype in tokenizer.excluded_token_types),
+        tag_chain=[tag.rules[0][0].split(
+            '.')[-1] for tag in tagger.tags]
+    )).dict()
+
+async def tag_entry(doc_id: str, cache: Optional[emcache.Client]):
     """Use DocuScope tagger on the specified document.
     Arguments:
     doc_id: a uuid of the document in the database.
     """
     doc_content = None
-    # ds_dict = "default"
     doc_processed = {"ERROR": "No file data to process."}
     doc_state = "error"
-    ENGINE.dispose()
     logging.info("Trying to tag %s", doc_id)
-    session: Session = SESSION()
-    with session.begin():
-        # Removed retrieval of dictionary name.  Unused and NULL values crash #7
-        subm = session.execute(select(Submission.content, Submission.name)
-                               .where(Submission.id == doc_id))
-        (doc_content, doc_name) = subm.first()
+    session: AsyncSession
+    async with ENGINE.connect() as session:
+        subm = await session.execute(select(Submission.content, Submission.name)
+                                     .where(Submission.id == doc_id))
+        (doc_content, doc_name) = subm.first() or (None, None)
         if doc_content:
-            session.execute(update(Submission).where(
-                Submission.id == doc_id).values(
-                state="submitted"))
-        else:
-            logging.error("Could not load %s!", doc_id)
-            raise FileNotFoundError(doc_id)
+            try:
+                await session.execute(update(Submission).where(
+                    Submission.id == doc_id).values(
+                    state="submitted"))
+                await session.commit()
+            except:
+                logging.error("Error while setting status of %s", doc_id)
+                await session.rollback()
+                raise
     if doc_content:
         try:
             if doc_name.endswith(".docx"):
                 doc_content = docx_to_text(doc_content)
-            doc_processed = tagger.tag(doc_content).dict()
+            doc_processed = await tag(doc_content, cache)
             if doc_processed.get('ds_num_word_tokens', 0) == 0:
                 doc_state = "error"
                 doc_processed['error'] = 'Document failed to parse: no word tokens found.'
@@ -108,11 +132,20 @@ def tag_entry(tagger: ItyTagger, doc_id: str):
             doc_processed = {'error': f"{exc}",
                              'trace': traceback.format_exc()}
             doc_state = "error"
-    with session.begin():
-        session.execute(update(Submission).where(
-            Submission.id == doc_id).values(
-            state=doc_state,
-            processed=doc_processed))
+    else:
+        logging.error("Could not load %s!", doc_id)
+        raise FileNotFoundError(doc_id)
+    async with ENGINE.connect() as session:
+        try:
+            await session.execute(update(Submission).where(
+                Submission.id == doc_id).values(
+                state=doc_state,
+                processed=doc_processed))
+            await session.commit()
+        except:
+            logging.error("Error while executing data update for %s", doc_id)
+            await session.rollback()
+            raise
     logging.info("Finished tagging %s", doc_id)
 
 
@@ -126,21 +159,14 @@ def valid_uuid(doc_id: str):
     return True
 
 
-def tag(doc_id):
-    """ Wrapper function for tag_entry that includes the tagger. """
-    #cProfile.run(f"tag_entry(TAGGER, '{doc_id}')", 'profile')
-    return tag_entry(TAGGER, doc_id)
-
-
-def run_tagger(args):
+async def run_tagger(args):
     """Gathers the document ids and runs the tagger on them (multitreaded)"""
     ids = {id for id in args.uuid if valid_uuid(id)}  # only uuids
-    session: Session = SESSION()
-    with session.begin():
+    async with ENGINE.connect() as session:
         # check if uuids are in database
-        results = session.execute(
+        results = await session.stream(
             select(Submission.id).where(Submission.id.in_(ids)))
-        valid_ids = {str(id) for (id,) in results}
+        valid_ids = {str(id) async for (id,) in results}
         check_ids = ids.difference(valid_ids)
         if check_ids:
             logging.warning(
@@ -151,24 +177,37 @@ def run_tagger(args):
             query = select(Submission.id).where(Submission.state == 'pending')
             if args.max_db_documents > 0:
                 query = query.limit(args.max_db_documents)
-            pending = session.execute(query)
-            valid_ids.update([str(id) for (id,) in pending])
+            pending = await session.stream(query)
+            valid_ids.update([str(id) async for (id,) in pending])
     if valid_ids:
         # Create the tagger using default dictionary.
-        logging.info('Loading dictionary: %s', SETTINGS.dictionary)
-        # Needs to be global to share as functools.partial does not work.
-        global TAGGER  # pylint: disable=global-statement
-        start = time.time()
-        TAGGER = create_ds_tagger(SETTINGS.dictionary)
-        logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
-                     timedelta(seconds=time.time() - start))
+        #logging.info('Loading dictionary: %s', SETTINGS.dictionary)
+        #start = time.time()
+        # logging.info('Loaded dictionary: %s (in %s)', SETTINGS.dictionary,
+        #             timedelta(seconds=time.time() - start))
         logging.info('Tagging: %s', valid_ids)
+        cache = None
+        try:
+            cache = await emcache.create_client([emcache.MemcachedHostAddress(
+                SETTINGS.memcache_url, SETTINGS.memcache_port)])
+        except asyncio.TimeoutError as exc:
+            logging.warning(exc)
         # tag(list(valid_ids)[0])
-        with Pool() as pool:
-            pool.map(tag, valid_ids)
+        #tasks = [tag_entry(id) for id in valid_ids]
+        # await asyncio.gather(*tasks)
+        for uid in valid_ids:
+            await tag_entry(uid, cache)
+        await cache.close()
+        # await asyncio.to_thread(tag, valid_ids)
+
+        # with Pool() as pool:  # issues with running out of memory due to forking/copy
+        #    pool.map(tag, valid_ids)
     else:
         logging.info('No documents to tag.')
-
+    if DRIVER is not None:
+        await DRIVER.close()
+    if ENGINE is not None:
+        await ENGINE.dispose()
 
 if __name__ == '__main__':
-    run_tagger(ARGS)
+    asyncio.run(run_tagger(ARGS))

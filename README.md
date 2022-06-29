@@ -5,9 +5,11 @@ DocuScope Tagger Service
 A web api for tagging text based on the DocuScope Ity tagger.
 
 ## Requirements
-1. [Singularity](https://sylabs.io/guides/3.7/admin-guide/)
-1. A DocuScope dictionary stored in a Neo4J database generated using
+1. [Neo4J](https://neo4j.com/) database.
+1. A DocuScope dictionary stored in the Neo4J database generated using
 CMU_Sidecar/docuscope-dictionary-tools/docuscope-rules>
+1. Optionally [Memcached](https://memcached.org/)
+1. Optionally [MySQL](https://www.mysql.com/) database of documents.
 
 ## Usage
 1. Build docker image: `docker build -t <tag> .`
