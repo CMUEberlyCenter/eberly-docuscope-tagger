@@ -7,30 +7,29 @@ import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from difflib import ndiff
-from html import escape
 from time import perf_counter
 from typing import Counter, Dict, List, Literal, Optional
 from uuid import UUID, uuid1
 
 import emcache
+from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 #from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from jsondiff import diff
-from lxml import etree  # nosec
 from neo4j import AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
 from pydantic import BaseModel, constr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from starlette.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
+from starlette.middleware.cors import CORSMiddleware
 
 from .count_patterns import CategoryPatternData, count_patterns, sort_patterns
+from .database import Submission
 from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
-from .database import Submission
 from .ds_tagger import get_wordclasses
 from .ity.formatters.simple_html_formatter import SimpleHTMLFormatter
 from .ity.tagger import ItyTaggerResult, neo_tagger, tag_json
@@ -147,7 +146,7 @@ async def tag_post(tag_request: TagRequst,
                    request: Request,
                    rule_db: NeoAsyncSession = Depends(neo_session)) -> EventSourceResponse:
     """Responds to post requests to tag a TagRequest.  Returns ServerSentEvents."""
-    return EventSourceResponse(tag_text(escape(tag_request.text), request, rule_db))
+    return EventSourceResponse(tag_text(tag_request.text, request, rule_db))
 
 
 async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dict:
@@ -187,22 +186,20 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
     output = "<body><p>" + \
         re.sub(r'<span[^>]*>\s*PZPZPZ\s*</span>',
                '</p><p>', output) + "</p></body>"
-    parser = etree.XMLParser(
-        load_dtd=False, no_network=True, remove_pis=True, resolve_entities=False)
     try:
-        etr = etree.fromstring(output, parser=parser)  # nosec
+        soup = BeautifulSoup(output, features="lxml")
     except Exception as exp:
         logging.error(output)
         logging.error(exp)
         raise HTTPException(detail="Unparsable tagged text.",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exp
     pats = defaultdict(Counter)
-    count_patterns(etr, pats)
+    count_patterns(soup, pats)
     type_count = Counter([token.type for token in tokens])
     yield ServerSentEvent(
         data=DocuScopeDocument(
             doc_id=doc_id,
-            html_content=generate_tagged_html(etr),
+            html_content=generate_tagged_html(soup),
             patterns=sort_patterns(pats),
             word_count=type_count[TokenType.WORD],
             tagging_time=timedelta(seconds=perf_counter() - start_time)

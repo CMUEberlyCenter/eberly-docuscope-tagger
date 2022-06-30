@@ -17,6 +17,7 @@ pydantic = {extras = ["dotenv"], version = "*"}
 sse-starlette = "*"
 aiomysql = "*"
 emcache = "*"
+beautifulsoup4 = "*"
 
 [dev-packages]
 pylint = "*"

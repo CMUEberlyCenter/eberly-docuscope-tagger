@@ -1,6 +1,5 @@
 """ Generates the DataFrames from the common dictionary and tones. """
-from lxml import etree # nosec
-from lxml.html import Classes #nosec
+from bs4 import BeautifulSoup
 import pandas as pd
 
 from .common_dictionary import get_common_frame
@@ -25,10 +24,10 @@ def get_lat_frame() -> dict[str, dict[str, str]]:
 
 LAT_MAP = get_lat_frame()
 
-def generate_tagged_html(etr: etree) -> str:
+def generate_tagged_html(soup: BeautifulSoup) -> str:
     """Takes an etree and adds the tag elements and classes."""
-    for tag in etr.iterfind(".//*[@data-key]"):
-        lat = tag.get('data-key')
+    for tag in soup.find_all(attrs={"data-key": True}):
+        lat = tag.get('data-key', None)
         categories = LAT_MAP.get(lat, None)
         if categories:
             if categories['cluster'] != 'Other':
@@ -38,12 +37,10 @@ def generate_tagged_html(etr: etree) -> str:
                 cpath = " > ".join([categories['category_label'],
                                     categories['subcategory_label'],
                                     categories['cluster_label']])
-                sup = etree.SubElement(tag, "sup")
-                sup.text = "{" + cpath + "}"
-                sclasses = Classes(sup.attrib)
-                sclasses |= cats
-                sclasses |= ['d_none', 'cluster_id']
-                tclasses = Classes(tag.attrib)
-                tclasses |= cats
-                tag.set('data-key', cpath)
-    return etree.tostring(etr)
+                sup = soup.new_tag("sup")
+                sup.string = f"{{{cpath}}}"
+                sup["class"] = sup.get('class', []) + cats + ['d_none', 'cluster_id']
+                tag.append(sup)
+                tag['class'] = tag.get('class', []) + cats
+                tag['data-key'] = cpath
+    return str(soup)
