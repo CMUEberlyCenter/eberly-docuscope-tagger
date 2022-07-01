@@ -157,7 +157,7 @@ async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dic
     doc_id = uuid1()
     text = re.sub(r'\n\s*\n', ' PZPZPZ\n\n', text)  # detect paragraph breaks.
     tokens = RegexTokenizer().tokenize(text)
-    tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
+    tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
                                 session=rule_db, cache=CACHE)
     tagger_gen = tagger.tag_next(tokens)
