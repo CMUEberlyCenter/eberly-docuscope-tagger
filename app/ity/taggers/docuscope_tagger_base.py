@@ -118,7 +118,7 @@ class DocuscopeTaggerBase(Tagger):
             tag = TaggerTag()
             rule.name = ds_rule['lat']
             try:
-                rule.full_name = ".".join([self.full_label, rule.name])
+                rule.full_name = f"{self.full_label}.{rule.name}"
             except Exception as exc:
                 logging.error(ds_rule)
                 raise exc
@@ -208,8 +208,7 @@ class DocuscopeTaggerBase(Tagger):
         # tag's "rules" list.
         if rule.name is not None:
             rule.full_name = f"{self.full_label}.{rule.name}"
-            rule_tuple = (rule.full_name, matching_ds_word)
-            tag.rules.append(rule_tuple)
+            tag.rules = [(rule.full_name, matching_ds_word)]
         # self._get_tag() will validate the returned rule and tag.
         return rule, tag
 
