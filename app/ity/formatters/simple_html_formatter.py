@@ -24,8 +24,8 @@ class SimpleHTMLFormatter(ItyFormatter):
     def __init__(
             self,
             *args,
-            template="base.html",
-            template_root=None,
+            template: str = "base.html",
+            template_root: Optional[str] = None,
             portable: bool = False,
             tag_maps_per_page: int = 2000,
             **kwargs
@@ -61,14 +61,14 @@ class SimpleHTMLFormatter(ItyFormatter):
         if (tags is None or tokens is None or text_str is None):
             raise ValueError(
                 "Not enough valid input data given to format() method.")
-
         output = self.template.render(
             tags=tags,
             tokens=tokens,
             s=text_str,
             token_types=TokenType,
             token_str_to_output_index=self.token_str_to_output_index,
-            token_whitespace_newline_str_to_output_index=self.token_whitespace_newline_str_to_output_index,
+            token_whitespace_newline_str_to_output_index=
+                self.token_whitespace_newline_str_to_output_index,
             portable=self.portable
         )
         output = re.sub(r'(\n|\s)+', ' ', output)
