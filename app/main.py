@@ -6,7 +6,7 @@ import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
-from typing import Counter, List, Literal, Optional
+from typing import Counter, Iterator, List, Literal, Optional, Union
 from uuid import UUID
 
 import emcache
@@ -139,17 +139,25 @@ class TagRequst(BaseModel):
     text: constr(strip_whitespace=True, min_length=1)
 
 
-@app.post("/tag")
-async def tag_post(tag_request: TagRequst,
-                   request: Request,
-                   rule_db: NeoAsyncSession = Depends(neo_session),
-                   sql: AsyncSession = Depends(session)) -> EventSourceResponse:
+class ErrorResponse(BaseModel):
+    """Schema for error response."""
+    detail: str
+
+
+@app.post("/tag", response_model=ServerSentEvent, responses={
+    status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Service Error", "model": ErrorResponse}
+})
+async def tag_posted_input(
+        tag_request: TagRequst,
+        request: Request,
+        rule_db: NeoAsyncSession = Depends(neo_session),
+        sql: AsyncSession = Depends(session)):
     """Responds to post requests to tag a TagRequest.  Returns ServerSentEvents."""
     return EventSourceResponse(tag_text(tag_request.text, request, rule_db, sql))
 
 
 async def tag_text(text: str, request: Request,
-                   rule_db: NeoAsyncSession, sql: AsyncSession) -> dict:
+                   rule_db: NeoAsyncSession, sql: AsyncSession) -> Iterator[ServerSentEvent]:
     """Use DocuScope to tag the submitted text.
     Yields ServerSentEvent dicts because servlet-sse expects dicts."""
     # pylint: disable=too-many-locals
@@ -236,7 +244,7 @@ async def tag_document(  # pylint: disable=too-many-locals
         request: Request,
         sql: AsyncSession,
         neo: NeoAsyncSession,
-        cache: emcache.Client):
+        cache: emcache.Client) -> Iterator[ServerSentEvent]:
     """Incrementally tag the given database document."""
     start_time = perf_counter()
     query: Result = await sql.execute(select(Submission.content, Submission.name)
@@ -250,7 +258,7 @@ async def tag_document(  # pylint: disable=too-many-locals
             yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
                                   event='submitted').dict()
         try:
-            if name.endswith(".docx"):
+            if name is not None and name.endswith(".docx"):
                 doc_content = docx_to_text(doc_content)
             tokenizer = RegexTokenizer()
             tokens = tokenizer.tokenize(doc_content)
@@ -336,11 +344,17 @@ async def tag_document(  # pylint: disable=too-many-locals
                              message=f"No content in document: {name}!").json()).dict()
 
 
-@app.get("/tag/{uuid}", response_model=Message)
-async def tag(uuid: UUID,
-              request: Request,
-              sql: AsyncSession = Depends(session),
-              neo: NeoAsyncSession = Depends(neo_session)) -> Message:
+@app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],
+         responses={
+             status.HTTP_400_BAD_REQUEST: {"descripton": "Bad request", "model": ErrorResponse},
+             status.HTTP_404_NOT_FOUND: {"description": "File not found error", "model": ErrorResponse},
+             status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Server Error", "model": ErrorResponse},
+             status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Service Unavailable", "model": ErrorResponse}})
+async def tag_database_document(
+        uuid: UUID,
+        request: Request,
+        sql: AsyncSession = Depends(session),
+        neo: NeoAsyncSession = Depends(neo_session)) -> Message | Iterator[ServerSentEvent]:
     """ Check the document status and tag if pending. """
     # check if uuid
     try:
@@ -369,7 +383,7 @@ async def tag(uuid: UUID,
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
-async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.Client):
+async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.Client) -> Iterator[ServerSentEvent]:
     """Tag all pending documents in the database."""
     sql: AsyncSession
     while True:  # wait until outstanding processing is done.
@@ -412,48 +426,61 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
         yield ServerSentEvent(event='done', data="No more pending documents.").dict()
 
 
-@app.get('/tag')
-async def tag_all(request: Request,
-                  neo: NeoAsyncSession = Depends(neo_session)):
+@app.get('/tag', response_model=ServerSentEvent)
+async def tag_all_pending_documents(
+        request: Request,
+        neo: NeoAsyncSession = Depends(neo_session)):
     """Tag all of the pending documents in the database while emitting sse's on progress."""
     return EventSourceResponse(tag_documents(request, neo, CACHE))
 
 
 class Status(BaseModel):
-    """Return type for /status requests. The state of a document."""
-    state: str
+    """Return type for /status requests. The cound of states of documents."""
+    state: Literal['pending', 'submitted', 'tagged',
+                   'error', 'abort', 'success', 'processing']
     count: Optional[int]
 
+class StatusState(BaseModel):
+    """Return type for /status/{uuid} requestes.  The state of a document."""
+    state: Literal['pending', 'submitted', 'tagged',
+                   'error', 'abort', 'success', 'processing']
 
-@app.get('/status/tagger')
-async def tagger_status(sql: AsyncSession = Depends(session)) -> list[Status]:
+
+@app.get('/status/tagger', response_model=list[Status])
+async def states_online_tagger(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get status of online tagger."""
     result: Result = await sql.execute(
         select(Tagging.state, func.count(Tagging.state)).group_by(Tagging.state))
     return result.all()
 
 
-@app.get('/status/documents')
-async def status_documents(sql: AsyncSession = Depends(session)) -> list[Status]:
+@app.get('/status/documents', response_model=list[Status])
+async def states_all_documents(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get the count of the various states of the documents in the database."""
     result: Result = await sql.execute(select(Submission.state, func.count(Submission.state))
                                        .group_by(Submission.state))
     return result.all()
 
 
-@app.get('/status/{uuid}')
-async def document_status(uuid: UUID, sql: AsyncSession = Depends(session)) -> Status:
+@app.get('/status/{uuid}', response_model=StatusState,
+         responses={
+             status.HTTP_404_NOT_FOUND: {"description": "File not found error", "model": ErrorResponse}})
+async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)) -> Status:
     """Get the state of the given document."""
     # look in both tables as uuid's are used for both and we do not know a priori which one.
     sub = union_all(
         select(Submission.state).where(Submission.id == uuid),
         select(Tagging.state).where(Tagging.id == uuid)).subquery()
     result: Result = await sql.execute(select(column('state')).select_from(sub))
-    return result.first()
+    state = result.first()
+    if state is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            f"{uuid} not found in database.")
+    return state
 
 
-@app.get('/status')
-async def status_all(sql: AsyncSession = Depends(session)) -> list[Status]:
+@app.get('/status', response_model=list[Status])
+async def all_tagging_states(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get the count of the merged states of the documents and tagging events."""
     # result: Result = await sql.execute(text(
     #    """SELECT state, COUNT(state) AS count FROM (
