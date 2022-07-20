@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Counter, List, Literal, Optional
-from uuid import UUID, uuid1
+from uuid import UUID
 
 import emcache
 from bs4 import BeautifulSoup
@@ -17,14 +17,15 @@ from fastapi.staticfiles import StaticFiles
 from neo4j import AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
 from pydantic import BaseModel, constr
-from sqlalchemy import func, select, update
+from sqlalchemy import column, func, insert, select, union_all, update
+from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from .count_patterns import CategoryPatternData, count_patterns, sort_patterns
-from .database import Submission
+from .database import Submission, Tagging
 from .default_settings import SETTINGS, SQLALCHEMY_DATABASE_URI
 from .docx_to_text import docx_to_text
 from .ds_tagger import get_wordclasses
@@ -141,58 +142,83 @@ class TagRequst(BaseModel):
 @app.post("/tag")
 async def tag_post(tag_request: TagRequst,
                    request: Request,
-                   rule_db: NeoAsyncSession = Depends(neo_session)) -> EventSourceResponse:
+                   rule_db: NeoAsyncSession = Depends(neo_session),
+                   sql: AsyncSession = Depends(session)) -> EventSourceResponse:
     """Responds to post requests to tag a TagRequest.  Returns ServerSentEvents."""
-    return EventSourceResponse(tag_text(tag_request.text, request, rule_db))
+    return EventSourceResponse(tag_text(tag_request.text, request, rule_db, sql))
 
 
-async def tag_text(text: str, request: Request, rule_db: NeoAsyncSession) -> dict:
+async def tag_text(text: str, request: Request,
+                   rule_db: NeoAsyncSession, sql: AsyncSession) -> dict:
     """Use DocuScope to tag the submitted text.
     Yields ServerSentEvent dicts because servlet-sse expects dicts."""
     # pylint: disable=too-many-locals
     start_time = perf_counter()
-    doc_id = uuid1()
+    ins: Result = await sql.execute(insert(Tagging).values(
+        state='processing', detail={"processed": 0}))
+    (doc_id,) = ins.inserted_primary_key
+    logging.info("Started tagging %s", doc_id)
     text = re.sub(r'\n\s*\n', ' PZPZPZ\n\n', text)  # detect paragraph breaks.
     tokens = RegexTokenizer().tokenize(text)
+    type_count = Counter([token.type for token in tokens])
+    await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+        word_count=type_count[TokenType.WORD]))
     tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
                                 session=rule_db, cache=CACHE)
     tagger_gen = tagger.tag_next(tokens)
     timeout = start_time + 1
+    indx = 0
     while True:
         if await request.is_disconnected():
-            logging.info("Client Disconnected!")
+            await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+                state='abort', detail={"processed": indx, "token_count": len(tokens)}))
+            await sql.commit()
+            logging.warning("Client Disconnected on %s!", doc_id)
             return
         try:
             indx = await tagger_gen.asend(None)
         except StopAsyncIteration:
             break
+        except Exception as exp:
+            await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+                state='error',
+                detail={"processed": indx, "token_count": len(tokens), "error": str(exp)}))
+            await sql.commit()
+            raise
         if perf_counter() > timeout:
             timeout = perf_counter() + 1
+            await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+                detail={"processed": indx, "token_count": len(tokens)}))
             yield ServerSentEvent(
                 event='processing',
                 data=Message(
                     doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
             ).dict()
+    await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+        detail={"processed": len(tokens), "token_count": len(tokens)}))
     yield ServerSentEvent(
         event='processing',
         data=Message(doc_id=doc_id, status='100').json()).dict()
     output = SimpleHTMLFormatter().format(
         tags=(tagger.rules, tagger.tags), tokens=tokens, text_str=text)
-    output = re.sub(r'(\n|\s)+', ' ', output)
-    output = "<body><p>" + \
-        re.sub(r'<span[^>]*>\s*PZPZPZ\s*</span>',
-               '</p><p>', output) + "</p></body>"
     try:
         soup = BeautifulSoup(output, features="lxml")
     except Exception as exp:
+        await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+            state='error', detail={
+                "processed": len(tokens),
+                "token_count": len(tokens),
+                "error": str(exp)}))
+        await sql.commit()
         logging.error(output)
         logging.error(exp)
         raise HTTPException(detail="Unparsable tagged text.",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exp
     pats = defaultdict(Counter)
     count_patterns(soup, pats)
-    type_count = Counter([token.type for token in tokens])
+    await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
+        state='success', detail={"processed": 100, "token_count": len(tokens)}))
     yield ServerSentEvent(
         data=DocuScopeDocument(
             doc_id=doc_id,
@@ -213,8 +239,8 @@ async def tag_document(  # pylint: disable=too-many-locals
         cache: emcache.Client):
     """Incrementally tag the given database document."""
     start_time = perf_counter()
-    query = await sql.execute(select(Submission.content, Submission.name)
-                              .where(Submission.id == doc_id))
+    query: Result = await sql.execute(select(Submission.content, Submission.name)
+                                      .where(Submission.id == doc_id))
     (doc_content, name) = query.first() or (None, None)
     if doc_content:
         await sql.execute(update(Submission).where(Submission.id == doc_id)
@@ -323,7 +349,7 @@ async def tag(uuid: UUID,
         raise HTTPException(detail=f"{vexc}: {uuid}",
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
-    result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
+    result: Result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
     (state,) = result.first()
     if state == 'pending':
         # check for too many submitted? Need to find limit emperically.
@@ -352,19 +378,19 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
             logging.info("Client Disconnected!")
             break
         async with SESSION() as sql:
-            result = await sql.execute(select(func.count(Submission.id))
-                                       .execution_options(populate_existing=True)
-                                       .where(Submission.state == 'submitted'))
+            result: Result = await sql.execute(select(func.count(Submission.id))
+                                               .execution_options(populate_existing=True)
+                                               .where(Submission.state == 'submitted'))
             (submitted,) = result.first() or (0,)
+            # await sql.commit()  # not necessary as no changes are made, but good idea.
             if submitted > 0:
                 yield ServerSentEvent(event='pending', data=submitted).dict()
             else:
                 break
-            await sql.commit()  # not necessary, but good idea.
         await asyncio.sleep(1)  # pause before checking again.
     while True:
         async with SESSION() as sql:
-            pending = await sql.execute(
+            pending: Result = await sql.execute(
                 select(Submission.id).where(Submission.state == 'pending').limit(1))
             (docid,) = pending.first() or (None,)
             if docid:
@@ -379,9 +405,9 @@ async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.C
                             yield await tag_next.asend(None)
                     except StopAsyncIteration:
                         break
+                await sql.commit()
             else:
                 break
-            await sql.commit()
     if not await request.is_disconnected():
         yield ServerSentEvent(event='done', data="No more pending documents.").dict()
 
@@ -399,18 +425,46 @@ class Status(BaseModel):
     count: Optional[int]
 
 
+@app.get('/status/tagger')
+async def tagger_status(sql: AsyncSession = Depends(session)) -> list[Status]:
+    """Get status of online tagger."""
+    result: Result = await sql.execute(
+        select(Tagging.state, func.count(Tagging.state)).group_by(Tagging.state))
+    return result.all()
+
+
+@app.get('/status/documents')
+async def status_documents(sql: AsyncSession = Depends(session)) -> list[Status]:
+    """Get the count of the various states of the documents in the database."""
+    result: Result = await sql.execute(select(Submission.state, func.count(Submission.state))
+                                       .group_by(Submission.state))
+    return result.all()
+
+
 @app.get('/status/{uuid}')
 async def document_status(uuid: UUID, sql: AsyncSession = Depends(session)) -> Status:
     """Get the state of the given document."""
-    result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
+    # look in both tables as uuid's are used for both and we do not know a priori which one.
+    sub = union_all(
+        select(Submission.state).where(Submission.id == uuid),
+        select(Tagging.state).where(Tagging.id == uuid)).subquery()
+    result: Result = await sql.execute(select(column('state')).select_from(sub))
     return result.first()
 
 
 @app.get('/status')
 async def status_all(sql: AsyncSession = Depends(session)) -> list[Status]:
-    """Get the count of the various states of the documents in the database."""
-    result = await sql.execute(select(Submission.state, func.count(Submission.state))
-                               .group_by(Submission.state))
+    """Get the count of the merged states of the documents and tagging events."""
+    # result: Result = await sql.execute(text(
+    #    """SELECT state, COUNT(state) AS count FROM (
+    #        (SELECT state FROM filesystem)
+    #         UNION ALL
+    #        (SELECT state FROM tagging)) c GROUP BY state;"""))
+    sub = union_all(select(Submission.state), select(Tagging.state)).subquery()
+    state = column('state')
+    query = select(state, func.count(state).label(
+        'count')).select_from(sub).group_by(state)
+    result: Result = await sql.execute(query)
     return result.all()
 
 
