@@ -106,7 +106,7 @@ async def session() -> AsyncSession:
 
 async def neo_session() -> NeoAsyncSession:
     """Establish a scoped session for accessing the neo4j database."""
-    my_session: NeoAsyncSession = DRIVER.session()
+    my_session: NeoAsyncSession = DRIVER.session({"database": SETTINGS.neo4j_database})
     try:
         yield my_session
     finally:
