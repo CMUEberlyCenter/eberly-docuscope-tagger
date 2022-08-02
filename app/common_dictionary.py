@@ -39,9 +39,11 @@ class Category(Entry):
 LevelMap = List[Tuple[str, Set[str]]]
 class CommonDictionary(BaseModel):
     """ Schema for the common dictionary file. """
+    dict_name: Optional[str] # added with 20210924
     default_dict: str
-    custom_dict: str
-    use_default_dict: bool
+    default_dict_customized: Optional[bool] # added with 20210924
+    custom_dict: Optional[str] # removed with 20210924
+    use_default_dict: Optional[bool] # removed with 20210924
     timestamp: str
     categories: List[Category]
 
