@@ -106,7 +106,8 @@ async def session() -> AsyncSession:
 
 async def neo_session() -> NeoAsyncSession:
     """Establish a scoped session for accessing the neo4j database."""
-    my_session: NeoAsyncSession = DRIVER.session() #({"database": SETTINGS.neo4j_database})
+    my_session: NeoAsyncSession = DRIVER.session(
+    )  # ({"database": SETTINGS.neo4j_database})
     try:
         yield my_session
     finally:
@@ -145,7 +146,8 @@ class ErrorResponse(BaseModel):
 
 
 @app.post("/tag", response_model=ServerSentEvent, responses={
-    status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Service Error", "model": ErrorResponse}
+    status.HTTP_500_INTERNAL_SERVER_ERROR: {
+        "description": "Internal Service Error", "model": ErrorResponse}
 })
 async def tag_posted_input(
         tag_request: TagRequst,
@@ -225,13 +227,20 @@ async def tag_text(text: str, request: Request,
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exp
     pats = defaultdict(Counter)
     count_patterns(soup, pats)
+    patterns = sort_patterns(pats)
+    # Update logged data.
     await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
-        state='success', detail={"processed": 100, "token_count": len(tokens)}))
+        state='success',
+        detail={
+            "processed": len(tokens),
+            "token_count": len(tokens),
+            "patterns": patterns
+        }))
     yield ServerSentEvent(
         data=DocuScopeDocument(
             doc_id=doc_id,
             html_content=generate_tagged_html(soup),
-            patterns=sort_patterns(pats),
+            patterns=patterns,
             word_count=type_count[TokenType.WORD],
             tagging_time=timedelta(seconds=perf_counter() - start_time)
             # pandas.Timedelta(datetime.now()-start_time).isoformat()
@@ -347,9 +356,18 @@ async def tag_document(  # pylint: disable=too-many-locals
 @app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],
          responses={
              status.HTTP_400_BAD_REQUEST: {"descripton": "Bad request", "model": ErrorResponse},
-             status.HTTP_404_NOT_FOUND: {"description": "File not found error", "model": ErrorResponse},
-             status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Internal Server Error", "model": ErrorResponse},
-             status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Service Unavailable", "model": ErrorResponse}})
+             status.HTTP_404_NOT_FOUND: {
+                 "description": "File not found error",
+                 "model": ErrorResponse
+             },
+             status.HTTP_500_INTERNAL_SERVER_ERROR: {
+                 "description": "Internal Server Error",
+                 "model": ErrorResponse
+             },
+             status.HTTP_503_SERVICE_UNAVAILABLE: {
+                 "description": "Service Unavailable",
+                 "model": ErrorResponse
+             }})
 async def tag_database_document(
         uuid: UUID,
         request: Request,
@@ -383,7 +401,9 @@ async def tag_database_document(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
-async def tag_documents(request: Request, neo: NeoAsyncSession, cache: emcache.Client) -> Iterator[ServerSentEvent]:
+async def tag_documents(
+    request: Request, neo: NeoAsyncSession, cache: emcache.Client
+) -> Iterator[ServerSentEvent]:
     """Tag all pending documents in the database."""
     sql: AsyncSession
     while True:  # wait until outstanding processing is done.
@@ -440,6 +460,7 @@ class Status(BaseModel):
                    'error', 'abort', 'success', 'processing']
     count: Optional[int]
 
+
 class StatusState(BaseModel):
     """Return type for /status/{uuid} requestes.  The state of a document."""
     state: Literal['pending', 'submitted', 'tagged',
@@ -464,7 +485,9 @@ async def states_all_documents(sql: AsyncSession = Depends(session)) -> list[Sta
 
 @app.get('/status/{uuid}', response_model=StatusState,
          responses={
-             status.HTTP_404_NOT_FOUND: {"description": "File not found error", "model": ErrorResponse}})
+             status.HTTP_404_NOT_FOUND: {
+                 "description": "File not found error", "model": ErrorResponse
+             }})
 async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)) -> Status:
     """Get the state of the given document."""
     # look in both tables as uuid's are used for both and we do not know a priori which one.
