@@ -9,7 +9,7 @@ A web api for tagging text based on the DocuScope Ity tagger.
 1. A DocuScope dictionary stored in the Neo4J database generated using
 CMU_Sidecar/docuscope-dictionary-tools/docuscope-rules>
 1. Optionally [Memcached](https://memcached.org/)
-1. Optionally [MySQL](https://www.mysql.com/) database of documents.
+1. [MySQL](https://www.mysql.com/) database for storing CMU_Sidecar/docuscope-classroom> documents and performance statistics.
 
 ## Usage
 1. Build docker image: `docker build -t <tag> .`
@@ -18,7 +18,7 @@ When deployed, service bound to port 80 of the docker container.
 
 This is meant to work in conjunction with CMU_Sidecar/docuscope-classroom>
 which is designed for visualizing and analyzing the results in a classroom
-setting.
+setting and with [DocuScope Write & Audit](https://github.com/CMUEberlyCenter/eberly-docuscope-wa).
 
 ## Thanks
 This was developed as part of the Sidecar project which is supported by

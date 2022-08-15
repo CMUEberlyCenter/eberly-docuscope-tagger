@@ -37,7 +37,7 @@ class UUID(TypeDecorator):
             value = uuid.UUID(bytes=value)
         return value
 
-class Submission(BASE): #pylint: disable=R0903
+class Submission(BASE): #pylint: disable=too-few-public-methods
     """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
@@ -57,7 +57,7 @@ class Submission(BASE): #pylint: disable=R0903
     def __repr__(self):
         return f"<File(id='{self.id}', state='{self.state}'>"
 
-class DSDictionary(BASE): #pylint: disable=R0903
+class DSDictionary(BASE): #pylint: disable=too-few-public-methods
     """A table of valid DocuScope dictionaries."""
     __tablename__ = 'dictionaries'
 
@@ -68,7 +68,7 @@ class DSDictionary(BASE): #pylint: disable=R0903
     def __repr__(self):
         return f"<DS_Dictionary(name='{self.name}')>"
 
-class Assignment(BASE): #pylint: disable=R0903
+class Assignment(BASE): #pylint: disable=too-few-public-methods
     """The assignments table in the docuscope database."""
     __tablename__ = 'assignments'
 
@@ -88,4 +88,14 @@ class Assignment(BASE): #pylint: disable=R0903
 
 def id_exists(session: Session, file_id):
     """Check if the given file_id exists in the database."""
-    return session.query(exists().where(Submission.id == file_id)).scalar()
+    return session.query(exists(Submission).where(Submission.id == file_id)).scalar()
+
+class Tagging(BASE): #pylint: disable=too-few-public-methods
+    """Table for collecting tagging events."""
+    __tablename__ = "tagging"
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    word_count = Column(Integer)
+    started = Column(TIMESTAMP)
+    finished = Column(TIMESTAMP)
+    state = Column(Enum('abort', 'error', 'success', 'processing'))
+    detail = Column(JSON)

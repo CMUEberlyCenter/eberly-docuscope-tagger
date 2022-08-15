@@ -17,12 +17,13 @@ class Settings(BaseSettings):
     memcache_url: str = 'localhost'
     memcache_port: int = 11211
     mysql_database: str = 'docuscope'
+    neo4j_database: str = 'neo4j'
     neo4j_password: SecretStr = None
     neo4j_user: str = 'neo4j'
     neo4j_uri: stricturl(tld_required=False,
                          allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
                                           'neo4j', 'neo4j+s', 'neo4j+ssc']
-                         ) = 'neo4j://localhost:7687/neo4j'
+                         ) = 'neo4j://localhost:7687/'
     sqlalchemy_track_modifications: bool = False
 
     class Config():  # pylint: disable=too-few-public-methods

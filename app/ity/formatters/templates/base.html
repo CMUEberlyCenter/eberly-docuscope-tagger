@@ -21,7 +21,7 @@
 {% elif s is not none and s|length > 0 %}
     {# Untokenized char byte positions, i.e. indexes into the str, s. #}
     {% set untokenized_chars_pos_start = 0 %}
-    {% set untokenized_chars_pos_end = s|length %}
+    {% set untokenized_chars_pos_end = s|length - 1 %}
 
     {% include "__s.html" %}
 {# Otherwise, no output? That's not good. #}

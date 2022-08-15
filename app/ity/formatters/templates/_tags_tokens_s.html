@@ -70,4 +70,9 @@
 {#            {% include "__s.html" %}#}
         {% endif %}
     {% endfor %}
+    {# For any text beyond last tag. #}
+    {% set final_tag = tag_data[-1] %}
+    {% set untokenized_chars_pos_start = final_tag.pos_end + final_tag.token_end_len + 1 %}
+    {% set untokenized_chars_pos_end = s|length - 1 %}
+    {% include "__s.html" %}
 {% endif %}
