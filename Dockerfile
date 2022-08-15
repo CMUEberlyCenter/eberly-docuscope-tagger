@@ -36,7 +36,7 @@ LABEL version=${TAG}
 LABEL description="DocuScope Tagger Service"
 COPY --from=deps /.venv /.venv
 WORKDIR /home/appuser
-COPY --from=builder /basic-docuscope-tagger/dist ./app/static
 COPY ./app ./app
+COPY --from=builder /basic-docuscope-tagger/dist ./app/static
 EXPOSE 80
 CMD ["sh", "-c", "hypercorn app.main:app --bind 0.0.0.0:80 --root-path ${ROOT_PATH}"]
