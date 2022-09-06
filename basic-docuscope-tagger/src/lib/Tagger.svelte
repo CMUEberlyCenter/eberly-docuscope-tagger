@@ -11,7 +11,7 @@
   import { fetchEventSource } from "@microsoft/fetch-event-source";
   import type { AlertProps } from "sveltestrap/src/Alert";
 
-  const tagger_url = window.location.pathname.replace(/static.*$/, 'tag');
+  const tagger_url = window.location.pathname.replace(/static.*$/, "tag");
   //const tagger_url = "https://docuscope.eberly.cmu.edu/tagger/tag";
   let resultColor: AlertProps["color"] = "info";
   let value = sessionStorage.getItem("text") ?? "";
@@ -44,14 +44,15 @@
             resultColor = "danger";
             console.error(msg.data);
             break;
-          case "processing":
+          case "processing": {
             const processing = JSON.parse(msg.data);
             progress = processing.status;
             tagged += `${processing.status}...`;
             resultColor = "info";
             console.log(msg.data);
             break;
-          case "done":
+          }
+          case "done": {
             const payload = JSON.parse(msg.data);
             tagged = payload.html_content;
             resultColor = "secondary";
@@ -59,6 +60,7 @@
             word_count = payload.word_count;
             console.log(msg.data);
             break;
+          }
           default:
             console.warn(`Unhandled message ${msg}`);
         }

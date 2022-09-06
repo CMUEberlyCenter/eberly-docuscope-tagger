@@ -1,7 +1,6 @@
 // Custom bootstrap overrides
-$font-family-sans-serif: 'Open Sans',
-  Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
-  sans-serif !default;
+$font-family-sans-serif: "Open Sans", Roboto, "Helvetica Neue", Arial,
+  "Noto Sans", sans-serif !default;
 
 // CMU Primary
 $cmu-core-red: #b00;
@@ -28,13 +27,13 @@ $cmu-weaver-blue: #002b49;
 $cmu-skibo-red: #8a2b2b;
 
 $theme-colors: (
-  'primary': $cmu-core-red,
-  'secondary': $cmu-secondary-blue,
-  'success': $cmu-secondary-green,
-  'info': $cmu-secondary-teal,
-  'warning': $cmu-secondary-gold,
-  'danger': $cmu-secondary-rose,
-  'light': $cmu-core-grey,
-  'dark': $cmu-core-darkgrey,
-  'secondary-dark': $cmu-secondary-blue-dark,
+  "primary": $cmu-core-red,
+  "secondary": $cmu-secondary-blue,
+  "success": $cmu-secondary-green,
+  "info": $cmu-secondary-teal,
+  "warning": $cmu-secondary-gold,
+  "danger": $cmu-secondary-rose,
+  "light": $cmu-core-grey,
+  "dark": $cmu-core-darkgrey,
+  "secondary-dark": $cmu-secondary-blue-dark,
 );
