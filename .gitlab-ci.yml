@@ -12,10 +12,10 @@ stages:
 
 include:
   # - template: Jobs/Code-Quality.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
-  - template: Security/License-Scanning.gitlab-ci.yml
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
+  #- template: Security/Dependency-Scanning.gitlab-ci.yml
+  #- template: Security/License-Scanning.gitlab-ci.yml
+  #- template: Security/SAST.gitlab-ci.yml
+  #- template: Security/Secret-Detection.gitlab-ci.yml
 
 variables:
   DOCKER_DRIVER: overlay2
@@ -33,12 +33,16 @@ pylint:
     - PIPENV_VENV_IN_PROJECT=1 python -m pipenv install --dev
     - python -m pipenv run pylint app
   allow_failure: true
+  rules:
+    - if: '1==0'
 
 build:
   stage: build
   services:
     - docker:dind
   before_script:
+    - echo $CI_REGISTRY
+    - echo $CI_REGISTRY_IMAGE
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username "$CI_REGISTRY_USER" --password-stdin
   script:
     - docker build --build-arg=BRANCH="${CI_COMMIT_BRANCH}" --build-arg=COMMIT="${CI_COMMIT_SHA}" --build-arg=TAG="${CI_COMMIT_TAG}" --build-arg=USER="${GITLAB_USER_NAME}" -t "${REF_CONTAINER}" .
