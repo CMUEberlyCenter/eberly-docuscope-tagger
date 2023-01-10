@@ -4,9 +4,6 @@ default:
 
 image: docker:latest
 
-services:
-  - docker:dind
-
 stages:
   - test
   - build
@@ -39,6 +36,8 @@ pylint:
 
 build:
   stage: build
+  services:
+    - docker:dind
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username "$CI_REGISTRY_USER" --password-stdin
   script:
@@ -47,6 +46,8 @@ build:
 
 release:
   stage: release
+  services:
+    - docker:dind
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username "$CI_REGISTRY_USER" --password-stdin
   script:
