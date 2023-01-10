@@ -1,6 +1,8 @@
+default:
+  tags:
+    - docuscope
+
 image: docker:latest
-tags:
-  - docuscope
 
 services:
   - docker:dind
