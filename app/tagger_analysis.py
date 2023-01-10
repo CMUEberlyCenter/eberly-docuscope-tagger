@@ -1,8 +1,8 @@
 """
 Basic data analysis functions.
 
-A collection of functions that produce various summary statistics over the collected
-tagging data.
+A collection of functions that produce various summary statistics over
+the collected tagging data.
 """
 import asyncio
 from collections import Counter
@@ -20,7 +20,7 @@ from .default_settings import SQLALCHEMY_DATABASE_URI
 
 async def tagger_performance(sql: AsyncSession):
     """Prints out performance statistics for the online DocuScope tagger."""
-    # TODO add time constraints (eg) WHERE TIMESTAMP('2022-09-26') <= started
+    # add time constraints (eg) WHERE TIMESTAMP('2022-09-26') <= started
     query = await sql.execute(select(Tagging).order_by(Tagging.started))
     data = DataFrame([[
             data.state,

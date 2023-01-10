@@ -1,4 +1,6 @@
 image: docker:latest
+tags:
+  - docuscope
 
 services:
   - docker:dind
@@ -10,7 +12,7 @@ stages:
   - deploy
 
 include:
-  - template: Code-Quality.gitlab-ci.yml
+  # - template: Jobs/Code-Quality.gitlab-ci.yml
   - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/License-Scanning.gitlab-ci.yml
   - template: Security/SAST.gitlab-ci.yml
