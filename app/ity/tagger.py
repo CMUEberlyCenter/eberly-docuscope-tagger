@@ -3,7 +3,8 @@ import logging
 import re
 from collections import Counter
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
 from pydantic.main import BaseModel
 
@@ -33,6 +34,7 @@ class DocuScopeTagResult(BaseModel):
     ds_dictionary: str
     ds_tag_dict: dict[str, DocuScopeTagCount]
     ds_count_dict: dict[str, int]
+    tagging_time: str
 
 class ItyTaggerResult(BaseModel):
     """Model of Ity tagger results."""
@@ -45,6 +47,7 @@ class ItyTaggerResult(BaseModel):
     num_excluded_tokens: int
     tag_chain: list[str]
     format_output: str
+    tagging_time: Optional[timedelta] = None
 
 class ItyTagger():
     """ Base tagger class for tagging a string. """
@@ -123,7 +126,8 @@ def tag_json(result: ItyTaggerResult) -> DocuScopeTagResult:
         ds_num_punctuation_tokens=result.num_punctuation_tokens,
         ds_dictionary=SETTINGS.dictionary,
         ds_tag_dict=tags_dict,
-        ds_count_dict=count_dict
+        ds_count_dict=count_dict,
+        tagging_time=str(result.tagging_time)
     )
 
 def countdict(target_list):

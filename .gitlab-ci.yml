@@ -1,7 +1,8 @@
-image: docker:latest
+default:
+  tags:
+    - docuscope
 
-services:
-  - docker:dind
+image: docker:latest
 
 stages:
   - test
@@ -10,7 +11,11 @@ stages:
   - deploy
 
 include:
-  - template: SAST.gitlab-ci.yml
+  # - template: Jobs/Code-Quality.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/License-Scanning.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
 
 variables:
   DOCKER_DRIVER: overlay2
@@ -31,6 +36,8 @@ pylint:
 
 build:
   stage: build
+  services:
+    - docker:dind
   before_script:
     - echo $CI_REGISTRY
     - echo $CI_REGISTRY_IMAGE
@@ -41,6 +48,8 @@ build:
 
 release:
   stage: release
+  services:
+    - docker:dind
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY --username "$CI_REGISTRY_USER" --password-stdin
   script:

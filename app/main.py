@@ -325,7 +325,8 @@ async def tag_document(  # pylint: disable=too-many-locals
                 num_excluded_tokens=sum(
                     type_count[etype] for etype in tokenizer.excluded_token_types),
                 tag_chain=[tag.rules[0][0].split(
-                    '.')[-1] for tag in tagger.tags]
+                    '.')[-1] for tag in tagger.tags],
+                tagging_time=timedelta(seconds=perf_counter() - start_time)
             )).dict()
         ))
         await sql.commit()
@@ -388,9 +389,9 @@ async def tag_database_document(
         tagging = tag_document(uuid, request, sql, neo, CACHE)
         return EventSourceResponse(tagging)
     if state == 'submitted':
-        return Message(doc_id=uuid, message=f"{uuid} already submitted.")
+        return Message(doc_id=uuid, status=f"{uuid} already submitted.")
     if state == 'tagged':
-        return Message(doc_id=uuid, message=f"{uuid} already tagged.")
+        return Message(doc_id=uuid, status=f"{uuid} already tagged.")
     if state == 'error':
         raise HTTPException(detail=f"Tagging failed for {uuid}",
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
