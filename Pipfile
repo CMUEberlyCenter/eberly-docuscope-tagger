@@ -10,7 +10,7 @@ SQLAlchemy = {extras = ["asyncio"], version = "*"}
 ujson = "*"
 jsondiff = "*"
 fastapi = "*"
-neo4j = "==5.0.0a1"
+neo4j = "*"
 hypercorn = "*"
 pandas = "*"
 pydantic = {extras = ["dotenv"], version = "*"}
