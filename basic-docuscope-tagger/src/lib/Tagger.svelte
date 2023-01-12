@@ -96,7 +96,7 @@
     {#if progress > 0 && progress < 100}
       <Progress value={progress} />
     {/if}
-    <Alert color={resultColor}>
+    <Alert color={resultColor} class="tagging-results">
       {@html tagged}
     </Alert>
   </CardBody>
