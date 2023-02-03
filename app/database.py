@@ -1,18 +1,25 @@
 """Schemas for the SQL DocuScope Writing Sidecar database."""
+from datetime import datetime
+from typing import Literal, Optional
 import uuid
+from typing_extensions import Annotated
 
-from sqlalchemy import (JSON, TIMESTAMP, VARBINARY, Boolean, Column, Enum,
-                        ForeignKey, Integer, LargeBinary, SmallInteger, String,
-                        exists)
-from sqlalchemy.orm import Session, declarative_base, relationship
+from sqlalchemy import (JSON, VARBINARY, ForeignKey,
+                        SmallInteger, String, exists)
+from sqlalchemy.orm import (Session, DeclarativeBase, relationship,
+                            mapped_column, Mapped, MappedAsDataclass)
 from sqlalchemy.types import TypeDecorator
 
-BASE = declarative_base()
-TINY_TEXT = String(255)
+TINY_TEXT = String(255)  # mysql TINY_TEXT
+TinyText = Annotated[str, mapped_column(TINY_TEXT)]
 
+# pylint: disable=too-few-public-methods
+class Base(MappedAsDataclass, DeclarativeBase):
+    """Base declarative dataclass for database tables."""
+
+# pylint: disable=too-many-ancestors, abstract-method
 class UUID(TypeDecorator):
     """A sqlalchemy type for handling UUIDs stored as bytes."""
-    #pylint: disable=W0223
     impl = VARBINARY(16)
 
     cache_ok = True
@@ -37,65 +44,90 @@ class UUID(TypeDecorator):
             value = uuid.UUID(bytes=value)
         return value
 
-class Submission(BASE): #pylint: disable=too-few-public-methods
+
+SubmissionState = Literal['pending', 'submitted', 'tagged', 'error']
+OwnerRole = Literal['student', 'instructor']
+
+
+class Submission(Base):
     """The filesystem table in the docuscope database."""
     __tablename__ = 'filesystem'
 
-    id = Column(UUID, primary_key=True)
-    name = Column(TINY_TEXT)
-    assignment = Column(Integer, ForeignKey("assignments.id"))
-    Assignment = relationship("Assignment")
-    owner = Column(TINY_TEXT)
-    created = Column(TIMESTAMP)
-    fullname = Column(TINY_TEXT)
-    state = Column(Enum('pending', 'submitted', 'tagged', 'error'))
-    ownedby = Column(Enum('student', 'instructor'))
-    content = Column(LargeBinary)
-    processed = Column(JSON)
-    pdf = Column(LargeBinary)
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+    name: Mapped[TinyText]
+    assignment: Mapped[int] = mapped_column(ForeignKey("assignments.id"))
+    Assignment: Mapped["Assignment"] = relationship()
+    owner: Mapped[TinyText]
+    created: Mapped[datetime]  # = mapped_column(TIMESTAMP)
+    fullname: Mapped[TinyText]
+    # = mapped_column(Enum('pending', 'submitted', 'tagged', 'error'))
+    state: Mapped[SubmissionState]
+    # = mapped_column(Enum('student', 'instructor'))
+    ownedby: Mapped[OwnerRole]
+    content: Mapped[bytes]  # = mapped_column(LargeBinary)
+    processed = mapped_column(JSON)
+    pdf: Mapped[bytes]  # = mapped_column(LargeBinary)
 
     def __repr__(self):
         return f"<File(id='{self.id}', state='{self.state}'>"
 
-class DSDictionary(BASE): #pylint: disable=too-few-public-methods
+
+class DSDictionary(Base):  # pylint: disable=too-few-public-methods
     """A table of valid DocuScope dictionaries."""
     __tablename__ = 'dictionaries'
 
-    id = Column(SmallInteger, primary_key=True)
-    name = Column(TINY_TEXT)
-    class_info = Column(JSON)
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    name: Mapped[TinyText]
+    class_info = mapped_column(JSON)
+    enabled: Mapped[bool]
 
     def __repr__(self):
         return f"<DS_Dictionary(name='{self.name}')>"
 
-class Assignment(BASE): #pylint: disable=too-few-public-methods
+
+class Assignment(Base):  # pylint: disable=too-few-public-methods
     """The assignments table in the docuscope database."""
     __tablename__ = 'assignments'
 
-    id = Column(Integer, primary_key=True)
-    oli_id = Column(VARBINARY(20))
-    dictionary = Column(SmallInteger, ForeignKey("dictionaries.id"))
-    Dictionary = relationship("DSDictionary")
-    name = Column(TINY_TEXT)
-    course = Column(TINY_TEXT)
-    instructor = Column(TINY_TEXT)
-    showmodel = Column(Boolean)
-    report_introduction = Column(String)
-    report_stv_introduction = Column(String)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    oli_id = mapped_column(VARBINARY(20))
+    dictionary: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("dictionaries.id"))
+    Dictionary: Mapped[Optional["DSDictionary"]] = relationship()
+    name: Mapped[TinyText]
+    course: Mapped[TinyText]
+    instructor: Mapped[TinyText]
+    showmodel: Mapped[bool]
+    showstudent: Mapped[bool]
+    report_introduction: Mapped[str]
+    report_stv_introduction: Mapped[str]
 
     def __repr__(self):
         return "<Assignment(id='{self.id}', name='{self.name}', dictionary='{self.oli_id}'>"
+
 
 def id_exists(session: Session, file_id):
     """Check if the given file_id exists in the database."""
     return session.query(exists(Submission).where(Submission.id == file_id)).scalar()
 
-class Tagging(BASE): #pylint: disable=too-few-public-methods
+
+TaggingState = Literal["abort", "error", "success", "processing"]
+#    ABORT = "abort"
+#    ERROR = "error"
+# SUCCESS = "success"
+# PROCESSING = "processing"
+
+
+class Tagging(Base):  # pylint: disable=too-few-public-methods
     """Table for collecting tagging events."""
     __tablename__ = "tagging"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    word_count = Column(Integer)
-    started = Column(TIMESTAMP)
-    finished = Column(TIMESTAMP)
-    state = Column(Enum('abort', 'error', 'success', 'processing'))
-    detail = Column(JSON)
+    # = mapped_column(default=TaggingState.PROCESSING)
+    state: Mapped[TaggingState]
+    # = mapped_column(default=func.current_timestamp)
+    started: Mapped[datetime]
+    # = mapped_column(default=func.current_timestamp)
+    finished: Mapped[datetime]
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID, primary_key=True, default=uuid.uuid4)
+    word_count: Mapped[int] = mapped_column(default=0)
+    detail = mapped_column(JSON)

@@ -36,6 +36,8 @@ from .ity.tokenizers.regex_tokenizer import RegexTokenizer
 from .ity.tokenizers.tokenizer import TokenType
 from .lat_frame import generate_tagged_html
 
+# pylint: disable=not-callable
+
 CACHE = None
 ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
@@ -64,12 +66,23 @@ app.add_middleware(
     allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
 
+async def reset_submitted():
+    """Sets any 'submitted' documents in the database back to 'pending' state."""
+    sql: AsyncSession = SESSION()
+    await sql.execute(
+        update(Submission)
+        .where(Submission.state == 'submitted')
+        .values(state = 'pending')
+    )
+    await sql.commit()
+    await sql.close()
+
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize some important static data on startup.
     Loads the _wordclasses json file for use by tagger.
-    Initializes database driver."""
+    Initializes memcache driver."""
     global WORDCLASSES, CACHE  # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()
     try:
@@ -78,11 +91,16 @@ async def startup_event():
     except asyncio.TimeoutError as exc:
         logging.warning(exc)
         CACHE = None
+    # Reset any submitted database entries on the assumption
+    # that only a single tagger exists and any pending documents
+    # are from the tagger getting killed in the middle of processing.
+    await reset_submitted()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler.  Closes database connection cleanly."""
+    await reset_submitted() # reset any submitted
     if DRIVER is not None:
         await DRIVER.close()
     if ENGINE is not None:
@@ -383,7 +401,7 @@ async def tag_database_document(
                             status_code=status.HTTP_400_BAD_REQUEST) from vexc
     # get current status.
     result: Result = await sql.execute(select(Submission.state).where(Submission.id == uuid))
-    (state,) = result.first()
+    state = result.scalar_one_or_none()
     if state == 'pending':
         # check for too many submitted? Need to find limit emperically.
         tagging = tag_document(uuid, request, sql, neo, CACHE)
@@ -416,7 +434,7 @@ async def tag_documents(
             result: Result = await sql.execute(select(func.count(Submission.id))
                                                .execution_options(populate_existing=True)
                                                .where(Submission.state == 'submitted'))
-            (submitted,) = result.first() or (0,)
+            submitted = result.scalar_one_or_none() or 0
             # await sql.commit()  # not necessary as no changes are made, but good idea.
             if submitted > 0:
                 yield ServerSentEvent(event='pending', data=submitted).dict()
@@ -427,7 +445,7 @@ async def tag_documents(
         async with SESSION() as sql:
             pending: Result = await sql.execute(
                 select(Submission.id).where(Submission.state == 'pending').limit(1))
-            (docid,) = pending.first() or (None,)
+            docid = pending.scalar_one_or_none()
             if docid:
                 logging.info("Tagging %s", docid)
                 tag_next = tag_document(docid, request, sql, neo, cache)
@@ -473,16 +491,15 @@ async def states_online_tagger(sql: AsyncSession = Depends(session)) -> list[Sta
     """Get status of online tagger."""
     result: Result = await sql.execute(
         select(Tagging.state, func.count(Tagging.state)).group_by(Tagging.state))
-    return result.all()
-
+    return [Status(state=state, count=count) for (state,count) in result.all()]
 
 @app.get('/status/documents', response_model=list[Status])
 async def states_all_documents(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get the count of the various states of the documents in the database."""
     result: Result = await sql.execute(select(Submission.state, func.count(Submission.state))
                                        .group_by(Submission.state))
-    return result.all()
-
+    #print(result.first().state)
+    return [Status(state=state, count=count) for (state, count) in result.all()]
 
 @app.get('/status/{uuid}', response_model=StatusState,
          responses={
@@ -496,11 +513,11 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
         select(Submission.state).where(Submission.id == uuid),
         select(Tagging.state).where(Tagging.id == uuid)).subquery()
     result: Result = await sql.execute(select(column('state')).select_from(sub))
-    state = result.first()
+    state = result.scalar_one_or_none()
     if state is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND,
                             f"{uuid} not found in database.")
-    return state
+    return Status(state=state)
 
 
 @app.get('/status', response_model=list[Status])
@@ -513,10 +530,9 @@ async def all_tagging_states(sql: AsyncSession = Depends(session)) -> list[Statu
     #        (SELECT state FROM tagging)) c GROUP BY state;"""))
     sub = union_all(select(Submission.state), select(Tagging.state)).subquery()
     state = column('state')
-    query = select(state, func.count(state).label(
-        'count')).select_from(sub).group_by(state)
+    query = select(state, func.count(state)).select_from(sub).group_by(state)
     result: Result = await sql.execute(query)
-    return result.all()
+    return [Status(state = state, count = count) for (state, count) in result.all()]
 
 
 app.mount('/static', StaticFiles(directory="app/static", html=True))
