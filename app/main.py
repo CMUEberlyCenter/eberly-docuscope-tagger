@@ -1,5 +1,6 @@
 """ The online DocuScope tagger interface. """
 import asyncio
+import json
 import logging
 import re
 import traceback
@@ -13,7 +14,7 @@ import emcache
 from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
-#from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+# from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from neo4j import AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
 from pydantic import BaseModel, constr
@@ -66,13 +67,14 @@ app.add_middleware(
     allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
 
+
 async def reset_submitted():
     """Sets any 'submitted' documents in the database back to 'pending' state."""
     sql: AsyncSession = SESSION()
     await sql.execute(
         update(Submission)
         .where(Submission.state == 'submitted')
-        .values(state = 'pending')
+        .values(state='pending')
     )
     await sql.commit()
     await sql.close()
@@ -100,7 +102,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler.  Closes database connection cleanly."""
-    await reset_submitted() # reset any submitted
+    await reset_submitted()  # reset any submitted
     if DRIVER is not None:
         await DRIVER.close()
     if ENGINE is not None:
@@ -277,7 +279,27 @@ async def tag_document(  # pylint: disable=too-many-locals
     query: Result = await sql.execute(select(Submission.content, Submission.name)
                                       .where(Submission.id == doc_id))
     (doc_content, name) = query.first() or (None, None)
-    if doc_content:
+    if name is not None and name.endswith(".docx") and doc_content:
+        try:
+            doc_content = docx_to_text(doc_content)
+        except Exception as exc:
+            # Catch and report issues with conversion
+            logging.error("Error while converting %s", name)
+            traceback.print_exc()
+            await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                state='error',
+                processed={
+                    'error': f'{exc}',
+                    'trace': traceback.format_exc(),
+                    'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                    'tagging_time': str(timedelta(seconds=perf_counter() - start_time))
+                }
+            ))
+            await sql.commit()
+            raise HTTPException(detail=f"Document conversion error ({exc}).",
+                                status_code=status.HTTP_400_BAD_REQUEST) from exc
+    # Check for empty doc_content string #17
+    if isinstance(doc_content, str) and doc_content.strip():
         await sql.execute(update(Submission).where(Submission.id == doc_id)
                           .values(state='submitted'))
         await sql.commit()
@@ -285,8 +307,6 @@ async def tag_document(  # pylint: disable=too-many-locals
             yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
                                   event='submitted').dict()
         try:
-            if name is not None and name.endswith(".docx"):
-                doc_content = docx_to_text(doc_content)
             tokenizer = RegexTokenizer()
             tokens = tokenizer.tokenize(doc_content)
             tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
@@ -327,6 +347,20 @@ async def tag_document(  # pylint: disable=too-many-locals
             await sql.commit()
             raise HTTPException(detail=f"Tagging error ({exc}).",
                                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
+        # 0 token check #17
+        if tokens.count == 0:
+            logging.error("No tokens after tagging %s", doc_id)
+            await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                state='error',
+                processed={
+                    'error': 'No tokens',
+                    'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                    'tagging_time': str(timedelta(seconds=perf_counter() - start_time))
+                }
+            ))
+            await sql.commit()
+            raise HTTPException(detail="No tokens for %s becuase the document has no recognizable text content.",
+                                status_code=status.HTTP_400_BAD_REQUEST)
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
@@ -356,6 +390,7 @@ async def tag_document(  # pylint: disable=too-many-locals
                                  timedelta(seconds=perf_counter() - start_time))
                              ).json()).dict()
     else:
+        logging.warning("%s: No file data to proess!", doc_id)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
             state='error',
             processed={
@@ -369,7 +404,7 @@ async def tag_document(  # pylint: disable=too-many-locals
             yield ServerSentEvent(
                 event='error',
                 data=Message(doc_id=doc_id,
-                             message=f"No content in document: {name}!").json()).dict()
+                             status=f"No content in document: {name}!").json()).dict()
 
 
 @app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],
@@ -484,6 +519,7 @@ class StatusState(BaseModel):
     """Return type for /status/{uuid} requestes.  The state of a document."""
     state: Literal['pending', 'submitted', 'tagged',
                    'error', 'abort', 'success', 'processing']
+    detail: Optional[str]
 
 
 @app.get('/status/tagger', response_model=list[Status])
@@ -491,17 +527,19 @@ async def states_online_tagger(sql: AsyncSession = Depends(session)) -> list[Sta
     """Get status of online tagger."""
     result: Result = await sql.execute(
         select(Tagging.state, func.count(Tagging.state)).group_by(Tagging.state))
-    return [Status(state=state, count=count) for (state,count) in result.all()]
+    return [Status(state=state, count=count) for (state, count) in result.all()]
+
 
 @app.get('/status/documents', response_model=list[Status])
 async def states_all_documents(sql: AsyncSession = Depends(session)) -> list[Status]:
     """Get the count of the various states of the documents in the database."""
     result: Result = await sql.execute(select(Submission.state, func.count(Submission.state))
                                        .group_by(Submission.state))
-    #print(result.first().state)
+    # print(result.first().state)
     return [Status(state=state, count=count) for (state, count) in result.all()]
 
-@app.get('/status/{uuid}', response_model=StatusState,
+
+@app.get('/status/{uuid}', response_model=StatusState, response_model_exclude_none=True,
          responses={
              status.HTTP_404_NOT_FOUND: {
                  "description": "File not found error", "model": ErrorResponse
@@ -510,14 +548,21 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
     """Get the state of the given document."""
     # look in both tables as uuid's are used for both and we do not know a priori which one.
     sub = union_all(
-        select(Submission.state).where(Submission.id == uuid),
-        select(Tagging.state).where(Tagging.id == uuid)).subquery()
-    result: Result = await sql.execute(select(column('state')).select_from(sub))
-    state = result.scalar_one_or_none()
-    if state is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND,
-                            f"{uuid} not found in database.")
-    return Status(state=state)
+        select(Submission.state, Submission.processed.label("detail")).where(Submission.id == uuid),
+        select(Tagging.state, Tagging.detail).where(Tagging.id == uuid)).subquery()
+    result: Result = await sql.execute(select(column('state'), column('detail')).select_from(sub))
+    (state, data) = result.first() or (None, None)
+    match state:
+        case None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                f"{uuid} not found in database.")
+        case 'error': # | 'processing' | 'submitted' | 'abort' | 'success':
+            return StatusState(state=state, detail=json.loads(data)['error'])
+        case 'processing':
+            processing = json.loads(data)
+            detail = f"{processing['processed']}/{processing['token_count']}" if 'token_count' in processing else "0"
+            return StatusState(state=state, detail=detail)
+    return StatusState(state=state)
 
 
 @app.get('/status', response_model=list[Status])
@@ -532,7 +577,7 @@ async def all_tagging_states(sql: AsyncSession = Depends(session)) -> list[Statu
     state = column('state')
     query = select(state, func.count(state)).select_from(sub).group_by(state)
     result: Result = await sql.execute(query)
-    return [Status(state = state, count = count) for (state, count) in result.all()]
+    return [Status(state=state, count=count) for (state, count) in result.all()]
 
 
 app.mount('/static', StaticFiles(directory="app/static", html=True))
