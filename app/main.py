@@ -268,7 +268,7 @@ async def tag_text(text: str, request: Request,
         event='done').dict()
 
 
-async def tag_document(  # pylint: disable=too-many-locals
+async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         doc_id: UUID,
         request: Request,
         sql: AsyncSession,
@@ -348,7 +348,7 @@ async def tag_document(  # pylint: disable=too-many-locals
             raise HTTPException(detail=f"Tagging error ({exc}).",
                                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
         # 0 token check #17
-        if tokens.count == 0:
+        if len(tokens) == 0:
             logging.error("No tokens after tagging %s", doc_id)
             await sql.execute(update(Submission).where(Submission.id == doc_id).values(
                 state='error',
@@ -359,8 +359,9 @@ async def tag_document(  # pylint: disable=too-many-locals
                 }
             ))
             await sql.commit()
-            raise HTTPException(detail="No tokens for %s becuase the document has no recognizable text content.",
-                                status_code=status.HTTP_400_BAD_REQUEST)
+            raise HTTPException(
+                detail="No tokens for %s becuase the document has no recognizable text content.",
+                status_code=status.HTTP_400_BAD_REQUEST)
         type_count = Counter([token.type for token in tokens])
         not_excluded = set(TokenType) - set(tokenizer.excluded_token_types)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
@@ -560,7 +561,8 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
             return StatusState(state=state, detail=json.loads(data)['error'])
         case 'processing':
             processing = json.loads(data)
-            detail = f"{processing['processed']}/{processing['token_count']}" if 'token_count' in processing else "0"
+            detail = f"{processing['processed']}/{processing['token_count']}" \
+                if 'token_count' in processing else "0"
             return StatusState(state=state, detail=detail)
     return StatusState(state=state)
 
