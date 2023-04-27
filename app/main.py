@@ -1,5 +1,6 @@
 """ The online DocuScope tagger interface. """
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import logging
 import re
@@ -15,7 +16,7 @@ from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 # from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-from neo4j import AsyncGraphDatabase
+from neo4j import AsyncDriver, AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
 from pydantic import BaseModel, constr
 from sqlalchemy import column, func, insert, select, union_all, update
@@ -39,21 +40,66 @@ from .lat_frame import generate_tagged_html
 
 # pylint: disable=not-callable
 
-CACHE = None
+CACHE: emcache.Client = None
 ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
                        class_=AsyncSession, future=True)
-DRIVER = AsyncGraphDatabase.driver(
-    SETTINGS.neo4j_uri,
-    auth=(SETTINGS.neo4j_user,
-          SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
-WORDCLASSES = None
-TAGGER = None
+DRIVER: AsyncDriver = None
+WORDCLASSES: dict[str, list[str]] = None
+
+
+async def reset_submitted(sessions: sessionmaker):
+    """Sets any 'submitted' documents in the database back to 'pending' state."""
+    async with sessions.begin() as sql:
+        await sql.execute(
+            update(Submission)
+            .where(Submission.state == 'submitted')
+            .values(state='pending')
+        )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Setup and teardown of required resources.
+
+    Load the wordclasses file which is required as part of ananlysis.
+    Setup caching.
+    Reset any "submitted" documents, assuming that they are remnants of
+    a crashed tagging process."""
+    # Startup
+    global WORDCLASSES, CACHE, DRIVER  # pylint: disable=global-statement
+    WORDCLASSES = get_wordclasses()  # load word classes file.
+    DRIVER = AsyncGraphDatabase.driver(
+        SETTINGS.neo4j_uri,
+        auth=(SETTINGS.neo4j_user,
+              SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
+
+    try:
+        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
+            SETTINGS.memcache_url, SETTINGS.memcache_port)])
+    except asyncio.TimeoutError as exc:
+        logging.warning(exc)
+        CACHE = None
+    # Reset any submitted database entries on the assumption
+    # that only a single tagger exists and any pending documents
+    # are from the tagger getting killed in the middle of processing.
+    await reset_submitted(SESSION)
+
+    yield
+    # Shutdown
+    await reset_submitted(SESSION)
+    if DRIVER is not None:  # close graph db connection.
+        await DRIVER.close()
+    if ENGINE is not None:  # close data db connection.
+        await ENGINE.dispose()
+    if CACHE is not None:  # close cache connection.
+        await CACHE.close()
 
 app = FastAPI(
     title="DocuScope Tagger",
     description="Run the DocuScope tagger on a document in the database or on given text.",
     version="4.0.0",
+    lifespan=lifespan,
     license={
         'name': 'CC BY-NC-SA 4.0',
         'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/'
@@ -66,49 +112,6 @@ app.add_middleware(
     allow_methods=['GET', 'POST'],
     allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
-
-
-async def reset_submitted():
-    """Sets any 'submitted' documents in the database back to 'pending' state."""
-    sql: AsyncSession = SESSION()
-    await sql.execute(
-        update(Submission)
-        .where(Submission.state == 'submitted')
-        .values(state='pending')
-    )
-    await sql.commit()
-    await sql.close()
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize some important static data on startup.
-    Loads the _wordclasses json file for use by tagger.
-    Initializes memcache driver."""
-    global WORDCLASSES, CACHE  # pylint: disable=global-statement
-    WORDCLASSES = get_wordclasses()
-    try:
-        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
-            SETTINGS.memcache_url, SETTINGS.memcache_port)])
-    except asyncio.TimeoutError as exc:
-        logging.warning(exc)
-        CACHE = None
-    # Reset any submitted database entries on the assumption
-    # that only a single tagger exists and any pending documents
-    # are from the tagger getting killed in the middle of processing.
-    await reset_submitted()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Shutdown event handler.  Closes database connection cleanly."""
-    await reset_submitted()  # reset any submitted
-    if DRIVER is not None:
-        await DRIVER.close()
-    if ENGINE is not None:
-        await ENGINE.dispose()
-    if CACHE is not None:
-        await CACHE.close()
 
 
 async def session() -> AsyncSession:
@@ -126,8 +129,8 @@ async def session() -> AsyncSession:
 
 async def neo_session() -> NeoAsyncSession:
     """Establish a scoped session for accessing the neo4j database."""
-    my_session: NeoAsyncSession = DRIVER.session(
-    )  # ({"database": SETTINGS.neo4j_database})
+    my_session: NeoAsyncSession = DRIVER.session()
+    # ({"database": SETTINGS.neo4j_database})
     try:
         yield my_session
     finally:
@@ -549,7 +552,8 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
     """Get the state of the given document."""
     # look in both tables as uuid's are used for both and we do not know a priori which one.
     sub = union_all(
-        select(Submission.state, Submission.processed.label("detail")).where(Submission.id == uuid),
+        select(Submission.state, Submission.processed.label(
+            "detail")).where(Submission.id == uuid),
         select(Tagging.state, Tagging.detail).where(Tagging.id == uuid)).subquery()
     result: Result = await sql.execute(select(column('state'), column('detail')).select_from(sub))
     (state, data) = result.first() or (None, None)
@@ -557,7 +561,7 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
         case None:
             raise HTTPException(status.HTTP_404_NOT_FOUND,
                                 f"{uuid} not found in database.")
-        case 'error': # | 'processing' | 'submitted' | 'abort' | 'success':
+        case 'error':  # | 'processing' | 'submitted' | 'abort' | 'success':
             return StatusState(state=state, detail=json.loads(data)['error'])
         case 'processing':
             processing = json.loads(data)
