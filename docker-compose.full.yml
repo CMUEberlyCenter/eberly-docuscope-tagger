@@ -1,0 +1,106 @@
+# Example compose file for the full DocuScope classroom system.
+version: "3.9"
+services:
+  cache:
+    image: docker.io/memcached:1.6-alpine
+    restart: always
+  mysql:
+    image: docker.io/mysql:8.0
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password --max_allowed_packet=128M
+    secrets:
+      - db_root_password
+      - db_user
+      - db_password
+    environment:
+      - MYSQL_USER_FILE=/run/secrets/db_user
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_password
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db_root_password
+      - MYSQL_DATABASE=docuscope
+  neo4j:
+    image: docker.io/neo4j:4.4.8
+    environment:
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      # following two should be same size
+      - NEO4J_dbms_memory_heap_initial__size=12000m
+      - NEO4J_dbms_memory_heap_max__size=12000m
+      - NEO4J_dbms_memory_pagecache_size=12100m
+      - NEO4J_dbms_jvm_additional='-XX:+ExitOnOutOfMemoryError'
+    ports:
+      - "7688:7687" # bolt
+    restart: always
+    volumes:
+      - "neo4j/data:/data"
+      - "neo4j/logs:/logs"
+  olilti:
+    image: registry.gitlab.com/cmu_sidecar/docuscope-olilti:v4-1-1
+    ports:
+      - "8081:8080"
+    secrets:
+      - db_user
+      - db_password
+    restart: always
+    depends_on:
+      - mysql
+    environment:
+      - MYSQL_USER_FILE=/run/secrets/db_user
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_password
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_TABLE=filesystem
+      - LTI_DUO_SCOPE_SECRET=
+      - LTI_DUO_SCOPE_KEY=
+      - LTI_PREVIEW_HOST=https://oli.cmu.edu
+      - MYSQL_DATABASE=docuscope
+  classroom:
+    image: registry.gitlab.com/cmu_sidecar/docuscope-classroom:latest
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_TABLE=filesystem
+      - DICTIONARY_HOME=/app/dictionaries
+      - MYSQL_DATABASE=docuscope
+      - ROOT_PATH=/classroom
+    depends_on:
+      - mysql
+    ports:
+      - "8001:80"
+    restart: always
+    secrets:
+      - db_user
+      - db_password
+    volumes:
+      - "dictionaries:/app/dictionaries:ro"
+      # - "assets:/app/static/assets:ro" # used for classroom customization
+  tagger:
+    image: registry.gitlab.com/cmu_sidecar/docuscope-tag:latest
+    environment:
+      - DICTIONARY_HOME=/app/dictionaries
+      - MEMCACHE_URL=cache
+      - NEO4J_URI=bolt://neo4j:7687/neo4j
+      - ROOT_PATH=/tagger
+    depends_on:
+      - cache
+      - neo4j
+    ports:
+      - "8089:80"
+    restart: always
+    secrets:
+      - db_user
+      - db_password
+      - neo4j_user
+      - neo4j_password
+    volumes:
+      - "dictionaries:/app/dictionaries:ro"
+
+secrets:
+  db_user:
+    file: secrets/db_user
+  db_password:
+    file: secrets/db_password
+  db_root_password:
+    file: secrets/db_root_password
+  neo4j_user:
+    file: secrets/neo4j_user
+  neo4j_password:
+    file: secrets/neo4j_password
