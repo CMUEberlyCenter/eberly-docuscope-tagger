@@ -1,19 +1,18 @@
 <script lang="ts">
-  import {
-    Alert,
-    Button,
-    Card,
-    CardBody,
-    CardSubtitle,
-    CardText,
-    Progress,
-  } from "sveltestrap";
   import { fetchEventSource } from "@microsoft/fetch-event-source";
-  import type { AlertProps } from "sveltestrap/src/Alert";
+  import { ProgressBar } from "@skeletonlabs/skeleton";
 
   const tagger_url = window.location.pathname.replace(/static.*$/, "tag");
   //const tagger_url = "https://docuscope.eberly.cmu.edu/tagger/tag";
-  let resultColor: AlertProps["color"] = "info";
+
+  let resultColor:
+    | "primary"
+    | "secondary"
+    | "tertiary"
+    | "success"
+    | "warning"
+    | "error"
+    | "surface" = "surface";
   let value = sessionStorage.getItem("text") ?? "";
   let tagged = "";
   let progress = 0;
@@ -23,7 +22,7 @@
 
   function tag(url: string, text: string) {
     const ctrl = new AbortController();
-    resultColor = "info";
+    resultColor = "warning";
     tagged = "Tagging...";
     sessionStorage.setItem("text", text);
     fetchEventSource(url, {
@@ -41,21 +40,21 @@
         switch (msg.event) {
           case "error":
             tagged = msg.data;
-            resultColor = "danger";
+            resultColor = "error";
             console.error(msg.data);
             break;
           case "processing": {
             const processing = JSON.parse(msg.data);
             progress = processing.status;
             tagged += `${processing.status}...`;
-            resultColor = "info";
+            resultColor = "secondary";
             console.log(msg.data);
             break;
           }
           case "done": {
             const payload = JSON.parse(msg.data);
             tagged = payload.html_content;
-            resultColor = "secondary";
+            resultColor = "surface";
             tagging_time = payload.tagging_time;
             word_count = payload.word_count;
             console.log(msg.data);
@@ -79,25 +78,23 @@
   }
 </script>
 
-<Card class="m-1">
-  <CardBody>
-    <CardSubtitle>Enter Text:</CardSubtitle>
-    <CardText>
-      <textarea bind:value rows="20" cols="60" />
-    </CardText>
-    <Button on:click={submit}>Submit</Button>
-  </CardBody>
-</Card>
-<Card class="m-1">
-  <CardBody>
-    <CardSubtitle>
-      Tagging Results: {word_count} words in {tagging_time}s ({speed} words/second)
-    </CardSubtitle>
+<div class="card p-2 m-2 border-2 border-primary-500">
+  <header class="card-header">Enter Text:</header>
+  <section>
+    <textarea bind:value rows="20" cols="60" />
+    <button type="button" class="btn variant-filled-secondary shadow shadow-blue-500/50" on:click={submit}>Submit</button>
+  </section>
+</div>
+<div class="card p-2 m-2 border-2 border-secondary-500">
+  <header class="card-header">
+    Tagging Results: {word_count} words in {tagging_time}s ({speed} words/second)
+  </header>
+  <section>
     {#if progress > 0 && progress < 100}
-      <Progress value={progress} />
+      <ProgressBar label="Tagging progress." value={progress} max={100} />
     {/if}
-    <Alert color={resultColor} class="tagging-results">
+    <aside class="alert {`variant-filled-${resultColor}`} tagging-results">
       {@html tagged}
-    </Alert>
-  </CardBody>
-</Card>
+    </aside>
+  </section>
+</div>
