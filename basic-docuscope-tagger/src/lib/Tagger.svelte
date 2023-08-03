@@ -81,7 +81,7 @@
 <div class="card p-2 m-2 border-2 border-primary-500">
   <header class="card-header">Enter Text:</header>
   <section>
-    <textarea bind:value rows="20" cols="60" />
+    <textarea class="textarea" bind:value rows="20" cols="60" />
     <button type="button" class="btn variant-filled-secondary shadow shadow-blue-500/50" on:click={submit}>Submit</button>
   </section>
 </div>
