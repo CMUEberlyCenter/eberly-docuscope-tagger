@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fetchEventSource } from "@microsoft/fetch-event-source";
   import { ProgressBar } from "@skeletonlabs/skeleton";
+  import { Temporal } from '@js-temporal/polyfill';
 
   const tagger_url = window.location.pathname.replace(/static.*$/, "tag");
   //const tagger_url = "https://docuscope.eberly.cmu.edu/tagger/tag";
@@ -55,9 +56,13 @@
             const payload = JSON.parse(msg.data);
             tagged = payload.html_content;
             resultColor = "surface";
-            tagging_time = payload.tagging_time;
+            tagging_time = Temporal.Duration.from(payload.tagging_time).total('second'); //payload.tagging_time;
             word_count = payload.word_count;
             console.log(msg.data);
+            break;
+          }
+          case "": { // eat empty lines.
+            // console.log('empty line');
             break;
           }
           default:

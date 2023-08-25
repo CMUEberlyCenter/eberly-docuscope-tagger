@@ -70,7 +70,7 @@ async def lifespan(_app: FastAPI):
     global WORDCLASSES, CACHE, DRIVER  # pylint: disable=global-statement
     WORDCLASSES = get_wordclasses()  # load word classes file.
     DRIVER = AsyncGraphDatabase.driver(
-        SETTINGS.neo4j_uri,
+        str(SETTINGS.neo4j_uri),
         auth=(SETTINGS.neo4j_user,
               SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
 
