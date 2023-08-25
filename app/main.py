@@ -9,8 +9,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Counter, Iterator, List, Literal, Optional, Union
-from typing_extensions import Annotated
 from uuid import UUID
+from typing_extensions import Annotated
 
 import emcache
 from bs4 import BeautifulSoup
@@ -161,7 +161,8 @@ class DocuScopeDocument(BaseModel):
 
 class TagRequst(BaseModel):
     """Schema for tagging requests. """
-    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    text: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1)]
 
 
 class ErrorResponse(BaseModel):
@@ -329,11 +330,13 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                         yield ServerSentEvent(
                             event='processing',
                             data=Message(
-                                doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").model_dump_json()
+                                doc_id=doc_id,
+                                status=f"{indx * 100 // len(tokens)}").model_dump_json()
                         ).model_dump()
             if not await request.is_disconnected():
-                yield ServerSentEvent(event='processing',
-                                      data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
+                yield ServerSentEvent(
+                    event='processing',
+                    data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
             output = SimpleHTMLFormatter().format(tags=(tagger.rules, tagger.tags),
                                                   tokens=tokens, text_str=doc_content)
         except Exception as exc:
@@ -409,7 +412,8 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
             yield ServerSentEvent(
                 event='error',
                 data=Message(doc_id=doc_id,
-                             status=f"No content in document: {name}!").model_dump_json()).model_dump()
+                             status=f"No content in document: {name}!").model_dump_json()
+            ).model_dump()
 
 
 @app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],

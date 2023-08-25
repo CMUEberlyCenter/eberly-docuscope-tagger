@@ -21,7 +21,6 @@ from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 from .default_settings import SETTINGS
 
 
-"""A DocuScope Tone tree."""
 DocuScopeToneTree = RootModel[Dict[str, Dict[str, List[str]]]]
 
 class DocuScopeTone(BaseModel): #pylint: disable=R0903
