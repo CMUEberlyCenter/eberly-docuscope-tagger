@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Counter, Iterator, List, Literal, Optional, Union
+from typing_extensions import Annotated
 from uuid import UUID
 
 import emcache
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 # from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from neo4j import AsyncDriver, AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
-from pydantic import BaseModel, constr
+from pydantic import StringConstraints, BaseModel
 from sqlalchemy import column, func, insert, select, union_all, update
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -145,22 +146,22 @@ class ServerSentEvent(BaseModel):
 
 class Message(BaseModel):
     """Model for tag responses."""
-    doc_id: Optional[UUID]
+    doc_id: Optional[UUID] = None
     status: str
 
 
 class DocuScopeDocument(BaseModel):
     """Model for tagged text."""
-    doc_id: Optional[UUID]
+    doc_id: Optional[UUID] = None
     word_count: int = 0
     html_content: str = ""
     patterns: List[CategoryPatternData]
-    tagging_time: timedelta
+    tagging_time: Optional[timedelta] = None
 
 
 class TagRequst(BaseModel):
     """Schema for tagging requests. """
-    text: constr(strip_whitespace=True, min_length=1)
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class ErrorResponse(BaseModel):
@@ -226,13 +227,13 @@ async def tag_text(text: str, request: Request,
             yield ServerSentEvent(
                 event='processing',
                 data=Message(
-                    doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
-            ).dict()
+                    doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").model_dump_json()
+            ).model_dump()
     await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
         detail={"processed": len(tokens), "token_count": len(tokens)}))
     yield ServerSentEvent(
         event='processing',
-        data=Message(doc_id=doc_id, status='100').json()).dict()
+        data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
     output = SimpleHTMLFormatter().format(
         tags=(tagger.rules, tagger.tags), tokens=tokens, text_str=text)
     try:
@@ -267,8 +268,8 @@ async def tag_text(text: str, request: Request,
             word_count=type_count[TokenType.WORD],
             tagging_time=timedelta(seconds=perf_counter() - start_time)
             # pandas.Timedelta(datetime.now()-start_time).isoformat()
-        ).json(),
-        event='done').dict()
+        ).model_dump_json(),
+        event='done').model_dump()
 
 
 async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -307,8 +308,8 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                           .values(state='submitted'))
         await sql.commit()
         if not await request.is_disconnected():
-            yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
-                                  event='submitted').dict()
+            yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").model_dump_json(),
+                                  event='submitted').model_dump()
         try:
             tokenizer = RegexTokenizer()
             tokens = tokenizer.tokenize(doc_content)
@@ -328,11 +329,11 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                         yield ServerSentEvent(
                             event='processing',
                             data=Message(
-                                doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
-                        ).dict()
+                                doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").model_dump_json()
+                        ).model_dump()
             if not await request.is_disconnected():
                 yield ServerSentEvent(event='processing',
-                                      data=Message(doc_id=doc_id, status='100').json()).dict()
+                                      data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
             output = SimpleHTMLFormatter().format(tags=(tagger.rules, tagger.tags),
                                                   tokens=tokens, text_str=doc_content)
         except Exception as exc:
@@ -383,7 +384,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                 tag_chain=[tag.rules[0][0].split(
                     '.')[-1] for tag in tagger.tags],
                 tagging_time=timedelta(seconds=perf_counter() - start_time)
-            )).dict()
+            )).model_dump()
         ))
         await sql.commit()
         if not await request.is_disconnected():
@@ -392,7 +393,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                 data=Message(doc_id=doc_id,
                              status=str(
                                  timedelta(seconds=perf_counter() - start_time))
-                             ).json()).dict()
+                             ).model_dump_json()).model_dump()
     else:
         logging.warning("%s: No file data to proess!", doc_id)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
@@ -408,7 +409,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
             yield ServerSentEvent(
                 event='error',
                 data=Message(doc_id=doc_id,
-                             status=f"No content in document: {name}!").json()).dict()
+                             status=f"No content in document: {name}!").model_dump_json()).model_dump()
 
 
 @app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],
@@ -476,7 +477,7 @@ async def tag_documents(
             submitted = result.scalar_one_or_none() or 0
             # await sql.commit()  # not necessary as no changes are made, but good idea.
             if submitted > 0:
-                yield ServerSentEvent(event='pending', data=submitted).dict()
+                yield ServerSentEvent(event='pending', data=submitted).model_dump()
             else:
                 break
         await asyncio.sleep(1)  # pause before checking again.
@@ -501,7 +502,7 @@ async def tag_documents(
             else:
                 break
     if not await request.is_disconnected():
-        yield ServerSentEvent(event='done', data="No more pending documents.").dict()
+        yield ServerSentEvent(event='done', data="No more pending documents.").model_dump()
 
 
 @app.get('/tag', response_model=ServerSentEvent)
@@ -516,14 +517,14 @@ class Status(BaseModel):
     """Return type for /status requests. The cound of states of documents."""
     state: Literal['pending', 'submitted', 'tagged',
                    'error', 'abort', 'success', 'processing']
-    count: Optional[int]
+    count: Optional[int] = None
 
 
 class StatusState(BaseModel):
     """Return type for /status/{uuid} requestes.  The state of a document."""
     state: Literal['pending', 'submitted', 'tagged',
                    'error', 'abort', 'success', 'processing']
-    detail: Optional[str]
+    detail: Optional[str] = None
 
 
 @app.get('/status/tagger', response_model=list[Status])

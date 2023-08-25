@@ -2,7 +2,7 @@
 import os
 from typing import Annotated
 from pydantic import AnyUrl, DirectoryPath, MySQLDsn, SecretStr, UrlConstraints
-from pydantic_settings import BaseSettings
+from pydantic_settings import SettingsConfigDict, BaseSettings
 
 Neo4JUrl = Annotated[AnyUrl, UrlConstraints(allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
                                           'neo4j', 'neo4j+s', 'neo4j+ssc'])]
@@ -27,12 +27,7 @@ class Settings(BaseSettings):
     neo4j_user: str = 'neo4j'
     neo4j_uri: Neo4JUrl = 'neo4j://localhost:7687/'
     sqlalchemy_track_modifications: bool = False
-
-    class Config():  # pylint: disable=too-few-public-methods
-        """Configuration class for Settings."""
-        env_file = '.env'
-        env_file_encoding = 'utf-8'
-        secrets_dir = '/run/secrets' if os.path.isdir('/run/secrets') else None
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', secrets_dir='/run/secrets' if os.path.isdir('/run/secrets') else None)
 
 
 SETTINGS = Settings()
