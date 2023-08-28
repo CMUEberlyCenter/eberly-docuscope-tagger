@@ -99,6 +99,7 @@
       <ProgressBar label="Tagging progress." value={progress} max={100} />
     {/if}
     <aside class="alert {`variant-filled-${resultColor}`} tagging-results">
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
       {@html tagged}
     </aside>
   </section>
