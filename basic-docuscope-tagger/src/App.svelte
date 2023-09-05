@@ -1,20 +1,16 @@
 <script lang="ts">
-  import { Navbar, NavbarBrand } from "sveltestrap";
+  import { AppBar, LightSwitch } from "@skeletonlabs/skeleton";
   //import Statistics from './lib/Statistics.svelte';
   import Tagger from "./lib/Tagger.svelte";
 </script>
 
-<Navbar class="bg-primary">
-  <NavbarBrand
+<AppBar background="bg-primary-500" slotTrail="place-content-end">
+  <a
     href="https://www.cmu.edu/dietrich/english/research/docuscope.html"
-    >DocuScope</NavbarBrand
+    class="text-white font-bold text-lg"
   >
-</Navbar>
-<!--<TabContent class="my-2">
-  <TabPane tabId="tag" tab="Tag Text" active>-->
+    DocuScope
+  </a>
+  <svelte:fragment slot="trail"><LightSwitch/></svelte:fragment>
+</AppBar>
 <Tagger />
-<!--</TabPane>
-  <TabPane tabId="stats" tab="Statistics">
-    <Statistics/>
-  </TabPane>
-</TabContent>-->

@@ -15,15 +15,13 @@ from typing import Dict, List
 
 from fastapi import HTTPException
 from pandas import DataFrame
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, RootModel, ValidationError
 from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 
 from .default_settings import SETTINGS
 
 
-class DocuScopeToneTree(BaseModel):
-    """A DocuScope Tone tree."""
-    __root__: Dict[str, Dict[str, List[str]]]
+DocuScopeToneTree = RootModel[Dict[str, Dict[str, List[str]]]]
 
 class DocuScopeTone(BaseModel): #pylint: disable=R0903
     """A DocuScope Tone entry."""

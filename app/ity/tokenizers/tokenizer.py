@@ -27,7 +27,7 @@ class Token(BaseModel):
     strings: list[str] # The strings corresponding to this token
     position: int    # Starting byte position of this token in original string.
     length: int # byte length of this token in original string.
-    type: Optional[TokenType] # the Token type of this token.
+    type: Optional[TokenType] = None # the Token type of this token.
 
 class Tokenizer(BaseClass):
     """

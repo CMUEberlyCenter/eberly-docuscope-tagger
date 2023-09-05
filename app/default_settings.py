@@ -1,6 +1,12 @@
 """Defines and sets default values for configuation object."""
 import os
-from pydantic import BaseSettings, DirectoryPath, SecretStr, stricturl
+from typing import Annotated
+from pydantic import AnyUrl, DirectoryPath, MySQLDsn, SecretStr, UrlConstraints
+from pydantic_settings import SettingsConfigDict, BaseSettings
+
+Neo4JUrl = Annotated[AnyUrl, UrlConstraints(allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
+                                                             'neo4j', 'neo4j+s', 'neo4j+ssc'])]
+
 
 class Settings(BaseSettings):
     """Application Settings.
@@ -20,24 +26,18 @@ class Settings(BaseSettings):
     neo4j_database: str = 'neo4j'
     neo4j_password: SecretStr = None
     neo4j_user: str = 'neo4j'
-    neo4j_uri: stricturl(tld_required=False,
-                         allowed_schemes=['bolt', 'bolt+s', 'bolt+ssc',
-                                          'neo4j', 'neo4j+s', 'neo4j+ssc']
-                         ) = 'neo4j://localhost:7687/'
+    neo4j_uri: Neo4JUrl = 'neo4j://localhost:7687/'
     sqlalchemy_track_modifications: bool = False
-
-    class Config():  # pylint: disable=too-few-public-methods
-        """Configuration class for Settings."""
-        env_file = '.env'
-        env_file_encoding = 'utf-8'
-        secrets_dir = '/run/secrets' if os.path.isdir('/run/secrets') else None
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8',
+                                      secrets_dir='/run/secrets'
+                                        if os.path.isdir('/run/secrets') else None)
 
 
 SETTINGS = Settings()
-SQLALCHEMY_DATABASE_URI: stricturl(tld_required=False, allowed_schemes=['mysql+aiomysql']) = (
+SQLALCHEMY_DATABASE_URI: MySQLDsn = (
     f"mysql+aiomysql://"
     f"{SETTINGS.db_user}"
-    f":{SETTINGS.db_password.get_secret_value()}" #pylint: disable=no-member
+    f":{SETTINGS.db_password.get_secret_value()}"  # pylint: disable=no-member
     f"@{SETTINGS.db_host}"
     f":{SETTINGS.db_port}"
     f"/{SETTINGS.mysql_database}")

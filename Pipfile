@@ -18,6 +18,7 @@ sse-starlette = "*"
 aiomysql = "*"
 emcache = "*"
 beautifulsoup4 = "*"
+pydantic-settings = "*"
 
 [dev-packages]
 pylint = "*"

@@ -1,5 +1,6 @@
 """ The online DocuScope tagger interface. """
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import logging
 import re
@@ -9,15 +10,16 @@ from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Counter, Iterator, List, Literal, Optional, Union
 from uuid import UUID
+from typing_extensions import Annotated
 
 import emcache
 from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 # from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-from neo4j import AsyncGraphDatabase
+from neo4j import AsyncDriver, AsyncGraphDatabase
 from neo4j import AsyncSession as NeoAsyncSession
-from pydantic import BaseModel, constr
+from pydantic import StringConstraints, BaseModel
 from sqlalchemy import column, func, insert, select, union_all, update
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -39,21 +41,66 @@ from .lat_frame import generate_tagged_html
 
 # pylint: disable=not-callable
 
-CACHE = None
+CACHE: emcache.Client = None
 ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
                        class_=AsyncSession, future=True)
-DRIVER = AsyncGraphDatabase.driver(
-    SETTINGS.neo4j_uri,
-    auth=(SETTINGS.neo4j_user,
-          SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
-WORDCLASSES = None
-TAGGER = None
+DRIVER: AsyncDriver = None
+WORDCLASSES: dict[str, list[str]] = None
+
+
+async def reset_submitted(sessions: sessionmaker):
+    """Sets any 'submitted' documents in the database back to 'pending' state."""
+    async with sessions.begin() as sql:
+        await sql.execute(
+            update(Submission)
+            .where(Submission.state == 'submitted')
+            .values(state='pending')
+        )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Setup and teardown of required resources.
+
+    Load the wordclasses file which is required as part of ananlysis.
+    Setup caching.
+    Reset any "submitted" documents, assuming that they are remnants of
+    a crashed tagging process."""
+    # Startup
+    global WORDCLASSES, CACHE, DRIVER  # pylint: disable=global-statement
+    WORDCLASSES = get_wordclasses()  # load word classes file.
+    DRIVER = AsyncGraphDatabase.driver(
+        str(SETTINGS.neo4j_uri),
+        auth=(SETTINGS.neo4j_user,
+              SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
+
+    try:
+        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
+            SETTINGS.memcache_url, SETTINGS.memcache_port)])
+    except asyncio.TimeoutError as exc:
+        logging.warning(exc)
+        CACHE = None
+    # Reset any submitted database entries on the assumption
+    # that only a single tagger exists and any pending documents
+    # are from the tagger getting killed in the middle of processing.
+    await reset_submitted(SESSION)
+
+    yield
+    # Shutdown
+    await reset_submitted(SESSION)
+    if DRIVER is not None:  # close graph db connection.
+        await DRIVER.close()
+    if ENGINE is not None:  # close data db connection.
+        await ENGINE.dispose()
+    if CACHE is not None:  # close cache connection.
+        await CACHE.close()
 
 app = FastAPI(
     title="DocuScope Tagger",
     description="Run the DocuScope tagger on a document in the database or on given text.",
     version="4.0.0",
+    lifespan=lifespan,
     license={
         'name': 'CC BY-NC-SA 4.0',
         'url': 'https://creativecommons.org/licenses/by-nc-sa/4.0/'
@@ -66,49 +113,6 @@ app.add_middleware(
     allow_methods=['GET', 'POST'],
     allow_headers=['*'])
 # app.add_middleware(HTTPSRedirectMiddleware)
-
-
-async def reset_submitted():
-    """Sets any 'submitted' documents in the database back to 'pending' state."""
-    sql: AsyncSession = SESSION()
-    await sql.execute(
-        update(Submission)
-        .where(Submission.state == 'submitted')
-        .values(state='pending')
-    )
-    await sql.commit()
-    await sql.close()
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize some important static data on startup.
-    Loads the _wordclasses json file for use by tagger.
-    Initializes memcache driver."""
-    global WORDCLASSES, CACHE  # pylint: disable=global-statement
-    WORDCLASSES = get_wordclasses()
-    try:
-        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
-            SETTINGS.memcache_url, SETTINGS.memcache_port)])
-    except asyncio.TimeoutError as exc:
-        logging.warning(exc)
-        CACHE = None
-    # Reset any submitted database entries on the assumption
-    # that only a single tagger exists and any pending documents
-    # are from the tagger getting killed in the middle of processing.
-    await reset_submitted()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Shutdown event handler.  Closes database connection cleanly."""
-    await reset_submitted()  # reset any submitted
-    if DRIVER is not None:
-        await DRIVER.close()
-    if ENGINE is not None:
-        await ENGINE.dispose()
-    if CACHE is not None:
-        await CACHE.close()
 
 
 async def session() -> AsyncSession:
@@ -126,8 +130,8 @@ async def session() -> AsyncSession:
 
 async def neo_session() -> NeoAsyncSession:
     """Establish a scoped session for accessing the neo4j database."""
-    my_session: NeoAsyncSession = DRIVER.session(
-    )  # ({"database": SETTINGS.neo4j_database})
+    my_session: NeoAsyncSession = DRIVER.session()
+    # ({"database": SETTINGS.neo4j_database})
     try:
         yield my_session
     finally:
@@ -142,22 +146,23 @@ class ServerSentEvent(BaseModel):
 
 class Message(BaseModel):
     """Model for tag responses."""
-    doc_id: Optional[UUID]
+    doc_id: Optional[UUID] = None
     status: str
 
 
 class DocuScopeDocument(BaseModel):
     """Model for tagged text."""
-    doc_id: Optional[UUID]
+    doc_id: Optional[UUID] = None
     word_count: int = 0
     html_content: str = ""
     patterns: List[CategoryPatternData]
-    tagging_time: timedelta
+    tagging_time: Optional[timedelta] = None
 
 
 class TagRequst(BaseModel):
     """Schema for tagging requests. """
-    text: constr(strip_whitespace=True, min_length=1)
+    text: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1)]
 
 
 class ErrorResponse(BaseModel):
@@ -223,13 +228,13 @@ async def tag_text(text: str, request: Request,
             yield ServerSentEvent(
                 event='processing',
                 data=Message(
-                    doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
-            ).dict()
+                    doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").model_dump_json()
+            ).model_dump()
     await sql.execute(update(Tagging).where(Tagging.id == doc_id).values(
         detail={"processed": len(tokens), "token_count": len(tokens)}))
     yield ServerSentEvent(
         event='processing',
-        data=Message(doc_id=doc_id, status='100').json()).dict()
+        data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
     output = SimpleHTMLFormatter().format(
         tags=(tagger.rules, tagger.tags), tokens=tokens, text_str=text)
     try:
@@ -264,8 +269,8 @@ async def tag_text(text: str, request: Request,
             word_count=type_count[TokenType.WORD],
             tagging_time=timedelta(seconds=perf_counter() - start_time)
             # pandas.Timedelta(datetime.now()-start_time).isoformat()
-        ).json(),
-        event='done').dict()
+        ).model_dump_json(),
+        event='done').model_dump()
 
 
 async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -304,8 +309,8 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                           .values(state='submitted'))
         await sql.commit()
         if not await request.is_disconnected():
-            yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").json(),
-                                  event='submitted').dict()
+            yield ServerSentEvent(data=Message(doc_id=doc_id, status="0").model_dump_json(),
+                                  event='submitted').model_dump()
         try:
             tokenizer = RegexTokenizer()
             tokens = tokenizer.tokenize(doc_content)
@@ -325,11 +330,13 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                         yield ServerSentEvent(
                             event='processing',
                             data=Message(
-                                doc_id=doc_id, status=f"{indx * 100 // len(tokens)}").json()
-                        ).dict()
+                                doc_id=doc_id,
+                                status=f"{indx * 100 // len(tokens)}").model_dump_json()
+                        ).model_dump()
             if not await request.is_disconnected():
-                yield ServerSentEvent(event='processing',
-                                      data=Message(doc_id=doc_id, status='100').json()).dict()
+                yield ServerSentEvent(
+                    event='processing',
+                    data=Message(doc_id=doc_id, status='100').model_dump_json()).model_dump()
             output = SimpleHTMLFormatter().format(tags=(tagger.rules, tagger.tags),
                                                   tokens=tokens, text_str=doc_content)
         except Exception as exc:
@@ -380,7 +387,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                 tag_chain=[tag.rules[0][0].split(
                     '.')[-1] for tag in tagger.tags],
                 tagging_time=timedelta(seconds=perf_counter() - start_time)
-            )).dict()
+            )).model_dump()
         ))
         await sql.commit()
         if not await request.is_disconnected():
@@ -389,7 +396,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
                 data=Message(doc_id=doc_id,
                              status=str(
                                  timedelta(seconds=perf_counter() - start_time))
-                             ).json()).dict()
+                             ).model_dump_json()).model_dump()
     else:
         logging.warning("%s: No file data to proess!", doc_id)
         await sql.execute(update(Submission).where(Submission.id == doc_id).values(
@@ -405,7 +412,8 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
             yield ServerSentEvent(
                 event='error',
                 data=Message(doc_id=doc_id,
-                             status=f"No content in document: {name}!").json()).dict()
+                             status=f"No content in document: {name}!").model_dump_json()
+            ).model_dump()
 
 
 @app.get("/tag/{uuid}", response_model=Union[Message, ServerSentEvent],
@@ -473,7 +481,7 @@ async def tag_documents(
             submitted = result.scalar_one_or_none() or 0
             # await sql.commit()  # not necessary as no changes are made, but good idea.
             if submitted > 0:
-                yield ServerSentEvent(event='pending', data=submitted).dict()
+                yield ServerSentEvent(event='pending', data=submitted).model_dump()
             else:
                 break
         await asyncio.sleep(1)  # pause before checking again.
@@ -498,7 +506,7 @@ async def tag_documents(
             else:
                 break
     if not await request.is_disconnected():
-        yield ServerSentEvent(event='done', data="No more pending documents.").dict()
+        yield ServerSentEvent(event='done', data="No more pending documents.").model_dump()
 
 
 @app.get('/tag', response_model=ServerSentEvent)
@@ -513,14 +521,14 @@ class Status(BaseModel):
     """Return type for /status requests. The cound of states of documents."""
     state: Literal['pending', 'submitted', 'tagged',
                    'error', 'abort', 'success', 'processing']
-    count: Optional[int]
+    count: Optional[int] = None
 
 
 class StatusState(BaseModel):
     """Return type for /status/{uuid} requestes.  The state of a document."""
     state: Literal['pending', 'submitted', 'tagged',
                    'error', 'abort', 'success', 'processing']
-    detail: Optional[str]
+    detail: Optional[str] = None
 
 
 @app.get('/status/tagger', response_model=list[Status])
@@ -549,7 +557,8 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
     """Get the state of the given document."""
     # look in both tables as uuid's are used for both and we do not know a priori which one.
     sub = union_all(
-        select(Submission.state, Submission.processed.label("detail")).where(Submission.id == uuid),
+        select(Submission.state, Submission.processed.label(
+            "detail")).where(Submission.id == uuid),
         select(Tagging.state, Tagging.detail).where(Tagging.id == uuid)).subquery()
     result: Result = await sql.execute(select(column('state'), column('detail')).select_from(sub))
     (state, data) = result.first() or (None, None)
@@ -557,7 +566,7 @@ async def current_tagging_state(uuid: UUID, sql: AsyncSession = Depends(session)
         case None:
             raise HTTPException(status.HTTP_404_NOT_FOUND,
                                 f"{uuid} not found in database.")
-        case 'error': # | 'processing' | 'submitted' | 'abort' | 'success':
+        case 'error':  # | 'processing' | 'submitted' | 'abort' | 'success':
             return StatusState(state=state, detail=json.loads(data)['error'])
         case 'processing':
             processing = json.loads(data)
