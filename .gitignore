@@ -112,6 +112,7 @@ dmypy.json
 
 # editor files
 *~
+.vscode
 
 # proprietary dictionaries
 /app/dictionaries/
