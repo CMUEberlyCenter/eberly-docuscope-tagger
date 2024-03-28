@@ -1,31 +1,33 @@
 """ The online DocuScope tagger interface. """
 import asyncio
-from contextlib import asynccontextmanager
 import json
 import logging
 import re
 import traceback
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
-from typing import Counter, Iterator, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 from uuid import UUID
-from typing_extensions import Annotated
 
-import emcache
+import aiomcache
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 # from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from neo4j import AsyncDriver, AsyncGraphDatabase
-from neo4j import AsyncSession as NeoAsyncSession
-from pydantic import StringConstraints, BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import column, func, insert, select, union_all, update
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.cors import CORSMiddleware
+from typing_extensions import Annotated
 
 from .count_patterns import CategoryPatternData, count_patterns, sort_patterns
 from .database import Submission, Tagging
@@ -41,7 +43,7 @@ from .lat_frame import generate_tagged_html
 
 # pylint: disable=not-callable
 
-CACHE: emcache.Client = None
+CACHE: aiomcache.Client = None
 ENGINE = create_async_engine(SQLALCHEMY_DATABASE_URI)
 SESSION = sessionmaker(bind=ENGINE, expire_on_commit=False,
                        class_=AsyncSession, future=True)
@@ -51,12 +53,129 @@ WORDCLASSES: dict[str, list[str]] = None
 
 async def reset_submitted(sessions: sessionmaker):
     """Sets any 'submitted' documents in the database back to 'pending' state."""
+    sql: AsyncSession
     async with sessions.begin() as sql:
         await sql.execute(
             update(Submission)
             .where(Submission.state == 'submitted')
             .values(state='pending')
         )
+
+
+async def count_submitted(sql: AsyncSession):
+    """Retrieve the number of 'submitted' documents in the database."""
+    result = await sql.execute(select(func.count(Submission.id))
+                               .where(Submission.state == 'submitted'))
+    return result.scalar_one_or_none() or 0
+
+
+async def tag_documents_task(  # pylint: disable=too-many-locals
+        sessions: sessionmaker,
+        driver: AsyncDriver,
+        wordclasses: dict[str, list[str]]):
+    """Task for tagging documents using internal scheduler."""
+    sql: AsyncSession
+    async with sessions.begin() as sql:
+        submitted = await count_submitted(sql)
+        if submitted > 0:
+            # do not run if there are documents already being processed.
+            # This ends up having the effect of try again at next scheduled
+            return
+        pending = await sql.execute(select(Submission.id, Submission.content, Submission.name)
+                                    .where(Submission.state == 'pending'))
+        cache = aiomcache.Client(SETTINGS.memcache_url, SETTINGS.memcache_port)
+        for (doc_id, doc_content, name) in pending:
+            start_time = perf_counter()
+            async with sessions.begin() as sub:
+                sub: AsyncSession
+                await sub.execute(update(Submission).where(Submission.id == doc_id)
+                                  .values(state='submitted'))
+            if name is not None and name.endswith(".docx") and doc_content:
+                try:
+                    doc_content = docx_to_text(doc_content)
+                except Exception as exc:
+                    logging.error(
+                        "Error while converting %s (%s)", name, doc_id)
+                    traceback.print_exc()
+                    await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                        state='error',
+                        processed={
+                            'error': f'{exc}',
+                            'trace': traceback.format_exc(),
+                            'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                            'tagging_time': str(timedelta(seconds=perf_counter() - start_time))
+                        }
+                    ))
+                    continue
+            if not isinstance(doc_content, str) or not doc_content.strip():
+                logging.warning("%s: No file data to process!", doc_id)
+                await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                    state='error',
+                    processed={
+                        'error': 'No file data to process.',
+                        'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                        'tagging_time': 0
+                    }
+                ))
+                continue
+            try:
+                tokenizer = RegexTokenizer()
+                tokens = tokenizer.tokenize(doc_content)
+                tagger = DocuscopeTaggerNeo(
+                    return_untagged_tags=False,
+                    return_no_rules_tags=True,
+                    return_included_tags=True,
+                    wordclasses=wordclasses,
+                    driver=driver,
+                    cache=cache)
+                rules, tags = await tagger.tag(tokens)
+                output = SimpleHTMLFormatter().format(
+                    tags=(rules, tags), tokens=tokens, text_str=doc_content)
+                if len(tokens) == 0:
+                    logging.error("No tokens after tagging %s", doc_id)
+                    await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                        state='error',
+                        processed={
+                            'error': 'No tokens!',
+                            'date_tagged': datetime.now(timezone.utc).astimezone().isoformat()
+                        }
+                    ))
+                    continue
+                type_count = Counter([token.type for token in tokens])
+                not_excluded = set(TokenType) - \
+                    set(tokenizer.excluded_token_types)
+                await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                    state='tagged',
+                    processed=tag_json(ItyTaggerResult(
+                        text_contents=doc_content,
+                        format_output=output,
+                        tag_dict=tagger.rules,
+                        num_tokens=len(tokens),
+                        num_word_tokens=type_count[TokenType.WORD],
+                        num_punctuation_tokens=type_count[TokenType.PUNCTUATION],
+                        num_included_tokens=sum(type_count[itype]
+                                                for itype in not_excluded),
+                        num_excluded_tokens=sum(
+                            type_count[etype] for etype in tokenizer.excluded_token_types),
+                        tag_chain=[tag.rules[0][0].split(
+                            '.')[-1] for tag in tagger.tags],
+                        tagging_time=timedelta(
+                            seconds=perf_counter() - start_time)
+                    )).model_dump()
+                ))
+            except Exception as exc:
+                logging.error("Error while tagging %s", doc_id)
+                traceback.print_exc()
+                await sql.execute(update(Submission).where(Submission.id == doc_id).values(
+                    state='error',
+                    processed={
+                        'error': f'{exc}',
+                        'trace': traceback.format_exc(),
+                        'date_tagged': datetime.now(timezone.utc).astimezone().isoformat(),
+                        'tagging_time': str(timedelta(seconds=perf_counter() - start_time))
+                    }
+                ))
+        await cache.close()
 
 
 @asynccontextmanager
@@ -74,10 +193,14 @@ async def lifespan(_app: FastAPI):
         str(SETTINGS.neo4j_uri),
         auth=(SETTINGS.neo4j_user,
               SETTINGS.neo4j_password.get_secret_value()))  # pylint: disable=no-member
+    logging.debug(SETTINGS.model_dump())
+    await DRIVER.verify_authentication()
+    await DRIVER.verify_connectivity()
 
     try:
-        CACHE = await emcache.create_client([emcache.MemcachedHostAddress(
-            SETTINGS.memcache_url, SETTINGS.memcache_port)])
+        CACHE = aiomcache.Client(SETTINGS.memcache_url, SETTINGS.memcache_port)
+        # [emcache.MemcachedHostAddress(
+        # SETTINGS.memcache_url, SETTINGS.memcache_port)])
     except asyncio.TimeoutError as exc:
         logging.warning(exc)
         CACHE = None
@@ -86,8 +209,18 @@ async def lifespan(_app: FastAPI):
     # are from the tagger getting killed in the middle of processing.
     await reset_submitted(SESSION)
 
+    if SETTINGS.scheduler_interval_seconds > 0:
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+        # add tasks here
+        # Context likely on another thread so no global variables
+        scheduler.add_job(tag_documents_task, IntervalTrigger(
+            seconds=SETTINGS.scheduler_interval_seconds),
+            [SESSION, DRIVER, WORDCLASSES])
+
     yield
     # Shutdown
+    scheduler.shutdown()
     await reset_submitted(SESSION)
     if DRIVER is not None:  # close graph db connection.
         await DRIVER.close()
@@ -115,7 +248,7 @@ app.add_middleware(
 # app.add_middleware(HTTPSRedirectMiddleware)
 
 
-async def session() -> AsyncSession:
+async def session():
     """Establish a scoped session for accessing the database."""
     my_session: AsyncSession = SESSION()
     try:
@@ -124,16 +257,6 @@ async def session() -> AsyncSession:
     except:
         await my_session.rollback()
         raise
-    finally:
-        await my_session.close()
-
-
-async def neo_session() -> NeoAsyncSession:
-    """Establish a scoped session for accessing the neo4j database."""
-    my_session: NeoAsyncSession = DRIVER.session()
-    # ({"database": SETTINGS.neo4j_database})
-    try:
-        yield my_session
     finally:
         await my_session.close()
 
@@ -177,14 +300,13 @@ class ErrorResponse(BaseModel):
 async def tag_posted_input(
         tag_request: TagRequst,
         request: Request,
-        rule_db: NeoAsyncSession = Depends(neo_session),
         sql: AsyncSession = Depends(session)):
     """Responds to post requests to tag a TagRequest.  Returns ServerSentEvents."""
-    return EventSourceResponse(tag_text(tag_request.text, request, rule_db, sql))
+    return EventSourceResponse(tag_text(tag_request.text, request, sql))
 
 
 async def tag_text(text: str, request: Request,
-                   rule_db: NeoAsyncSession, sql: AsyncSession) -> Iterator[ServerSentEvent]:
+                   sql: AsyncSession) -> AsyncIterator[ServerSentEvent]:
     """Use DocuScope to tag the submitted text.
     Yields ServerSentEvent dicts because servlet-sse expects dicts."""
     # pylint: disable=too-many-locals
@@ -200,7 +322,7 @@ async def tag_text(text: str, request: Request,
         word_count=type_count[TokenType.WORD]))
     tagger = DocuscopeTaggerNeo(return_untagged_tags=True, return_no_rules_tags=True,
                                 return_included_tags=True, wordclasses=WORDCLASSES,
-                                session=rule_db, cache=CACHE)
+                                driver=DRIVER, cache=CACHE)
     tagger_gen = tagger.tag_next(tokens)
     timeout = start_time + 1
     indx = 0
@@ -277,8 +399,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
         doc_id: UUID,
         request: Request,
         sql: AsyncSession,
-        neo: NeoAsyncSession,
-        cache: emcache.Client) -> Iterator[ServerSentEvent]:
+        cache: aiomcache.Client) -> AsyncIterator[ServerSentEvent]:
     """Incrementally tag the given database document."""
     start_time = perf_counter()
     query: Result = await sql.execute(select(Submission.content, Submission.name)
@@ -316,7 +437,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
             tokens = tokenizer.tokenize(doc_content)
             tagger = DocuscopeTaggerNeo(return_untagged_tags=False, return_no_rules_tags=True,
                                         return_included_tags=True, wordclasses=WORDCLASSES,
-                                        session=neo, cache=cache)
+                                        driver=DRIVER, cache=cache)
             tagger_gen = tagger.tag_next(tokens)
             timeout = start_time + 1  # perf_counter returns seconds.
             while True:
@@ -434,8 +555,7 @@ async def tag_document(  # pylint: disable=too-many-locals,too-many-branches,too
 async def tag_database_document(
         uuid: UUID,
         request: Request,
-        sql: AsyncSession = Depends(session),
-        neo: NeoAsyncSession = Depends(neo_session)) -> Message | Iterator[ServerSentEvent]:
+        sql: AsyncSession = Depends(session)) -> Message | AsyncIterator[ServerSentEvent]:
     """ Check the document status and tag if pending. """
     # check if uuid
     try:
@@ -448,7 +568,7 @@ async def tag_database_document(
     state = result.scalar_one_or_none()
     if state == 'pending':
         # check for too many submitted? Need to find limit emperically.
-        tagging = tag_document(uuid, request, sql, neo, CACHE)
+        tagging = tag_document(uuid, request, sql, CACHE)
         return EventSourceResponse(tagging)
     if state == 'submitted':
         return Message(doc_id=uuid, status=f"{uuid} already submitted.")
@@ -465,8 +585,8 @@ async def tag_database_document(
 
 
 async def tag_documents(
-    request: Request, neo: NeoAsyncSession, cache: emcache.Client
-) -> Iterator[ServerSentEvent]:
+    request: Request, cache: aiomcache.Client
+) -> AsyncIterator[ServerSentEvent]:
     """Tag all pending documents in the database."""
     sql: AsyncSession
     while True:  # wait until outstanding processing is done.
@@ -475,11 +595,7 @@ async def tag_documents(
             logging.info("Client Disconnected!")
             break
         async with SESSION() as sql:
-            result: Result = await sql.execute(select(func.count(Submission.id))
-                                               .execution_options(populate_existing=True)
-                                               .where(Submission.state == 'submitted'))
-            submitted = result.scalar_one_or_none() or 0
-            # await sql.commit()  # not necessary as no changes are made, but good idea.
+            submitted = await count_submitted(sql)
             if submitted > 0:
                 yield ServerSentEvent(event='pending', data=submitted).model_dump()
             else:
@@ -492,7 +608,7 @@ async def tag_documents(
             docid = pending.scalar_one_or_none()
             if docid:
                 logging.info("Tagging %s", docid)
-                tag_next = tag_document(docid, request, sql, neo, cache)
+                tag_next = tag_document(docid, request, sql, cache)
                 while True:
                     try:
                         if await request.is_disconnected():
@@ -511,10 +627,9 @@ async def tag_documents(
 
 @app.get('/tag', response_model=ServerSentEvent)
 async def tag_all_pending_documents(
-        request: Request,
-        neo: NeoAsyncSession = Depends(neo_session)):
+        request: Request):
     """Tag all of the pending documents in the database while emitting sse's on progress."""
-    return EventSourceResponse(tag_documents(request, neo, CACHE))
+    return EventSourceResponse(tag_documents(request, CACHE))
 
 
 class Status(BaseModel):
