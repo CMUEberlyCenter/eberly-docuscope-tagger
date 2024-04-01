@@ -13,13 +13,13 @@ fastapi = "*"
 neo4j = "*"
 hypercorn = "*"
 pandas = "*"
-pydantic = {extras = ["dotenv"], version = "*"}
 sse-starlette = "*"
 aiomysql = "*"
 beautifulsoup4 = "*"
 pydantic-settings = "*"
 aiomcache = "*"
 apscheduler = "*"
+pydantic = "*"
 
 [dev-packages]
 pylint = "*"
