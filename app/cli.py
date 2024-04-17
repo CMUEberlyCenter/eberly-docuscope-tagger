@@ -2,7 +2,7 @@
 Run with --help to see options.
 """
 import argparse
-#import cProfile
+# import cProfile
 import asyncio
 import logging
 import traceback
@@ -10,7 +10,7 @@ import uuid
 from collections import Counter
 from typing import Optional
 
-import emcache
+import aiomcache
 from neo4j import AsyncGraphDatabase
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
@@ -33,15 +33,15 @@ PARSER = argparse.ArgumentParser(
 PARSER.add_argument("uuid", nargs='*',
                     help="The id of a document in the DocuScope database.")
 # no default in following so as to not reveal password.
-#PARSER.add_argument( # from .env
+# PARSER.add_argument( # from .env
 #    "--db",
 #    help="URI of the database. <user>:<pass>@<url>:<port>/<database>")
 PARSER.add_argument('-c', '--check_db', action='store_true',
                     help="Check the database for any 'pending' documents.")
 PARSER.add_argument('-m', '--max_db_documents', type=int, default=-1,
                     help="Maximum number of 'pending' documents to process.")
-#PARSER.add_argument('-r', '--rule_db', help="Rule Database URI.") # from .env
-#PARSER.add_argument('--memcache', help="Memcache URI.") # from .env
+# PARSER.add_argument('-r', '--rule_db', help="Rule Database URI.") # from .env
+# PARSER.add_argument('--memcache', help="Memcache URI.") # from .env
 PARSER.add_argument('-v', '--verbose', help="Increase output verbosity.",
                     action="count", default=0)
 ARGS = PARSER.parse_args()
@@ -57,20 +57,15 @@ DRIVER = AsyncGraphDatabase.driver(
 
 WORDCLASSES = get_wordclasses()
 
-async def tag(doc_content: str, cache: Optional[emcache.Client]):
+
+async def tag(doc_content: str, cache: Optional[aiomcache.Client]):
     """Construct and run the tagger on the given text."""
     tokenizer = RegexTokenizer()
     tokens = tokenizer.tokenize(doc_content)
-    tagger = DocuscopeTaggerNeo(
-        return_untagged_tags=False,
-        return_no_rules_tags=True,
-        return_included_tags=True,
-        wordclasses=WORDCLASSES,
-        session=DRIVER.session(),
-        cache=cache)
-    tagger.wordclasses = WORDCLASSES
+    tagger = DocuscopeTaggerNeo(return_untagged_tags=False,
+                                return_no_rules_tags=True, return_included_tags=True,
+                                wordclasses=WORDCLASSES, driver=DRIVER, cache=cache)
     rules, tags = await tagger.tag(tokens)
-    await tagger.session.close()
     output = SimpleHTMLFormatter().format(
         tags=(rules, tags), tokens=tokens, text_str=doc_content)
     type_count = Counter([token.type for token in tokens])
@@ -88,9 +83,10 @@ async def tag(doc_content: str, cache: Optional[emcache.Client]):
             '.')[-1] for tag in tagger.tags],
         tag_dict=tagger.rules,
         text_contents=doc_content
-    )).dict()
+    )).model_dump()
 
-async def tag_entry(doc_id: str, cache: Optional[emcache.Client]):
+
+async def tag_entry(doc_id: str, cache: Optional[aiomcache.Client]):
     """Use DocuScope tagger on the specified document.
     Arguments:
     doc_id: a uuid of the document in the database.
@@ -183,12 +179,12 @@ async def run_tagger(args):
         logging.info('Tagging: %s', valid_ids)
         cache = None
         try:
-            cache = await emcache.create_client([emcache.MemcachedHostAddress(
-                SETTINGS.memcache_url, SETTINGS.memcache_port)])
+            cache = await aiomcache.Client(
+                SETTINGS.memcache_url, SETTINGS.memcache_port)
         except asyncio.TimeoutError as exc:
             logging.warning(exc)
         # tag(list(valid_ids)[0])
-        #tasks = [tag_entry(id) for id in valid_ids]
+        # tasks = [tag_entry(id) for id in valid_ids]
         # await asyncio.gather(*tasks)
         for uid in valid_ids:
             await tag_entry(uid, cache)

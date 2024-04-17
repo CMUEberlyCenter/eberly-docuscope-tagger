@@ -28,9 +28,10 @@ class Settings(BaseSettings):
     neo4j_user: str = 'neo4j'
     neo4j_uri: Neo4JUrl = 'neo4j://localhost:7687/'
     sqlalchemy_track_modifications: bool = False
+    scheduler_interval_seconds: int = 60
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8',
                                       secrets_dir='/run/secrets'
-                                        if os.path.isdir('/run/secrets') else None)
+                                      if os.path.isdir('/run/secrets') else None)
 
 
 SETTINGS = Settings()

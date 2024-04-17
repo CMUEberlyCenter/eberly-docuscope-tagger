@@ -13,18 +13,18 @@ fastapi = "*"
 neo4j = "*"
 hypercorn = "*"
 pandas = "*"
-pydantic = {extras = ["dotenv"], version = "*"}
 sse-starlette = "*"
 aiomysql = "*"
-emcache = "*"
 beautifulsoup4 = "*"
 pydantic-settings = "*"
+aiomcache = "*"
+apscheduler = "*"
+pydantic = "*"
 
 [dev-packages]
 pylint = "*"
-requests = "*"
 bandit = "*"
 autopep8 = "*"
 
 [requires]
-python_version = "3.11"
+python_version = "3.12"

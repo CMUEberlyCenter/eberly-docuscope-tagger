@@ -5,8 +5,8 @@ __author__ = 'mringenb'
 import hashlib
 import json
 from typing import Optional
-import emcache
 
+import aiomcache
 import neo4j
 from neo4j import AsyncTransaction
 
@@ -19,34 +19,36 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
     This DocuScope tagger connects to a neo4j database which stores all of the
     LAT rules and patterns.
     """
+
     def __init__(
             self, *args,
             wordclasses: Optional[dict[str, list[str]]] = None,
-            session: Optional[neo4j.AsyncSession] = None,
-            cache: Optional[emcache.Client] = None,
+            driver: Optional[neo4j.AsyncDriver] = None,
+            cache: Optional[aiomcache.Client] = None,
             **kwargs):
         super().__init__(*args, **kwargs)
-        self.session = session
+        self.driver = driver
         self.wordclasses = wordclasses or {}
         self._label = (self._label if self._label else "") + ".default"
-        self.emcache = cache
+        self.cache = cache
 
     async def get_long_rule(self) -> Optional[LatRule]:
         lookup = [sorted(list(t))
                   for t in self.get_next_ds_words_in_range(0, 4)]
         rules: Optional[list[LatRule]] = None
-        if self.emcache:
+        if self.cache:
             hsh = hashlib.sha256(str(lookup).encode(
                 'utf-8')).hexdigest().encode('utf-8')
-            hit = await self.emcache.get(hsh)
+            hit = await self.cache.get(hsh)
             if hit is not None:
-                rules = json.loads(hit.value)
+                rules = json.loads(hit)
         if rules is None:
-            rules = await self.session.read_transaction(
-                get_lat_rules, lookup)
-        if rules and self.emcache:
+            async with self.driver.session() as session:
+                rules = await session.execute_read(
+                    get_lat_rules, lookup)
+        if rules and self.cache:
             jrules = json.dumps(rules)
-            await self.emcache.set(hsh, jrules.encode('utf-8'), noreply=True)
+            await self.cache.set(hsh, jrules.encode('utf-8'))
         tokens = self.get_next_ds_words_in_range(
             0, len(rules[0]['path'])) if len(rules) > 0 else []
         ds_rule = next((r for r in rules
@@ -56,17 +58,19 @@ class DocuscopeTaggerNeo(DocuscopeTaggerBase):
     async def get_short_rule(self, token_ds_words: list[str]):
         if len(token_ds_words) == 0:
             return None, None
-        if self.emcache:
+        if self.cache:
             hsh = hashlib.sha256(str(sorted(token_ds_words)).encode('utf-8'))\
                 .hexdigest().encode('utf-8')
-            hit = await self.emcache.get(hsh)
+            hit = await self.cache.get(hsh)
             if hit is not None:
-                [lat, token] = json.loads(hit.value)
+                [lat, token] = json.loads(hit)
                 return lat, token
-        lat, token = await self.session.read_transaction(get_short_rules, token_ds_words)
-        if self.emcache:
-            await self.emcache.set(hsh, json.dumps([lat, token]).encode("utf-8"), noreply=True)
+        async with self.driver.session() as session:
+            lat, token = await session.execute_read(get_short_rules, token_ds_words)
+        if self.cache:
+            await self.cache.set(hsh, json.dumps([lat, token]).encode("utf-8"))
         return lat, token
+
 
 async def get_lat_rules(
         trx: AsyncTransaction,
@@ -112,12 +116,12 @@ async def get_lat_rules(
             "RETURN [w1.word, w2.word] AS path, "
             "l.lat as lat LIMIT 1",
             first=tokens[0], second=tokens[1])
-    res = [{"lat": record["lat"],
+    return [{"lat": record["lat"],
             "path": record["path"]}
-           async for record in result]
-    return res
+            async for record in result]
 
-async def get_short_rules(trx: AsyncTransaction, #: Transaction,
+
+async def get_short_rules(trx: AsyncTransaction,
                           first_tokens: list[str]) -> tuple[str, str]:
     """ Retrieve the unigram LAT rule for the given token. """
     trans = await trx.run(

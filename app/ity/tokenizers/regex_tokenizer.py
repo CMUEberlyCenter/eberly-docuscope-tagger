@@ -185,12 +185,12 @@ class RegexTokenizer(Tokenizer):
         )
     """
 
-    def __init__(self, *args,
-                 remove_hyphen_breaks: bool=True,
-                 convert_entities: bool=True,
-                 convert_newlines: bool=True,
-                 condense_whitespace: Optional[str]=None,
-                 condense_newlines: Optional[str]=None,
+    def __init__(self, *args,  # pylint: disable=too-many-arguments
+                 remove_hyphen_breaks: bool = True,
+                 convert_entities: bool = True,
+                 convert_newlines: bool = True,
+                 condense_whitespace: Optional[str] = None,
+                 condense_newlines: Optional[str] = None,
                  **kwargs):
         """
         Instantiates a RegexTokenizer. The initialization options below affect
@@ -267,8 +267,8 @@ class RegexTokenizer(Tokenizer):
         # Compile the full tokenization regular expression.
         self.__compile_tokenize_pattern()
         # If we're going to convert entities, we need an HTMLParser instance.
-        #self.html_parser = None
-        #if self.convert_entities:
+        # self.html_parser = None
+        # if self.convert_entities:
         #    self.html_parser = HTMLParser()
 
     def __compile_tokenize_pattern(self):
@@ -300,7 +300,8 @@ class RegexTokenizer(Tokenizer):
         ])
         # Compile the final pattern. Those strings have whitespace, so make
         # sure re.VERBOSE is one of the flags used!
-        self.tokenize_pattern = re.compile(final_tokenize_pattern_str, re.I | re.VERBOSE)
+        self.tokenize_pattern = re.compile(
+            final_tokenize_pattern_str, re.I | re.VERBOSE)
 
     def _format_token_entity(self, _m, token_data: Token):
         """
@@ -323,7 +324,7 @@ class RegexTokenizer(Tokenizer):
         token_data.type = TokenType.PUNCTUATION
 
         # Make sure we have an HTMLParser instance before continuing.
-        if self.convert_entities: # if self.html_parser is not None:
+        if self.convert_entities:  # if self.html_parser is not None:
             # Find and convert any HTML entities that may be in this token.
             converted_token_str = unescape(token_strs[0])
             # Should we preserve the original token string (and is the
@@ -402,11 +403,12 @@ class RegexTokenizer(Tokenizer):
                 if self.preserve_original_strs:
                     token_strs.insert(0, token_str)
                 else:
-                # Replace the token string instead.
+                    # Replace the token string instead.
                     token_strs[0] = token_str
             else:
                 # How did we match this group? We didn't even look for it.
-                raise ValueError("Somehow found a hyphen_break group when we shouldn't have.")
+                raise ValueError(
+                    "Somehow found a hyphen_break group when we shouldn't have.")
 
     def _format_token_whitespace(self, _m, token_data: Token):
         """
@@ -526,10 +528,10 @@ class RegexTokenizer(Tokenizer):
             # the token type, e.g. TokenType.WORD) will be added
             # by one of the self._format_token_*() helper methods.
             single_token_list = Token(
-                strings = [group],
-                position = start,
-                length = length,
-                type = None)
+                strings=[group],
+                position=start,
+                length=length,
+                type=None)
 
             # Potentially omit certain types of tokens.
             # The technique used to identify token type: if the entire group
