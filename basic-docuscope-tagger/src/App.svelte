@@ -11,6 +11,8 @@
   >
     DocuScope
   </a>
-  <svelte:fragment slot="trail"><LightSwitch/></svelte:fragment>
+  {#snippet trail()}
+    <LightSwitch/>
+  {/snippet}
 </AppBar>
 <Tagger />
