@@ -13,13 +13,13 @@
     | "success"
     | "warning"
     | "error"
-    | "surface" = "surface";
-  let value = sessionStorage.getItem("text") ?? "";
-  let tagged = "";
-  let progress = 0;
-  let tagging_time = 0;
-  let word_count = 0;
-  $: speed = word_count / (tagging_time > 0 ? tagging_time : 1);
+    | "surface" = $state("surface");
+  let value = $state(sessionStorage.getItem("text") ?? "");
+  let tagged = $state("");
+  let progress = $state(0);
+  let tagging_time = $state(0);
+  let word_count = $state(0);
+  let speed = $derived(word_count / (tagging_time > 0 ? tagging_time : 1));
 
   function tag(url: string, text: string) {
     const ctrl = new AbortController();
@@ -86,8 +86,8 @@
 <div class="card p-2 m-2 border-2 border-primary-500">
   <header class="card-header">Enter Text:</header>
   <section>
-    <textarea class="textarea" bind:value rows="20" cols="60" />
-    <button type="button" class="btn variant-filled-secondary shadow shadow-blue-500/50" on:click={submit}>Submit</button>
+    <textarea class="textarea" bind:value rows="20" cols="60"></textarea>
+    <button type="button" class="btn variant-filled-secondary shadow shadow-blue-500/50" onclick={submit}>Submit</button>
   </section>
 </div>
 <div class="card p-2 m-2 border-2 border-secondary-500">
