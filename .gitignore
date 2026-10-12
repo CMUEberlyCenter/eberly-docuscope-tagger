@@ -110,9 +110,16 @@ secrets/
 .dmypy.json
 dmypy.json
 
+# Node
+node_modules/
+.npm
+.svelte-check
+
 # editor files
 *~
 .vscode
+.idea/
+.DS_Store
 
 # proprietary dictionaries
 /app/dictionaries/
