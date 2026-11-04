@@ -41,5 +41,11 @@
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
     "@microsoft/fetch-event-source": "^2.0.1"
+  },
+  "overrides": {
+    "minimatch": ">=11.0.1"
+  },
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": true
   }
 }

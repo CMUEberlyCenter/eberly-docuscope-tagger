@@ -1,4 +1,12 @@
-[![pipeline status](https://gitlab.com/CMU_Sidecar/docuscope-tag/badges/master/pipeline.svg)](https://gitlab.com/CMU_Sidecar/docuscope-tag/commits/master)
+# ⚠️ ARCHIVED / UNMAINTAINED
+
+This repository is **no longer actively maintained or supported**. 
+
+- **Status:** Archived
+- **Reason:** Project reached end-of-life and end of funding.
+- **Usage:** You are free to browse the code, but no new features, bug fixes, or security patches will be applied. 
+
+*If you wish to continue developing this codebase, please feel free to **fork** it.*
 
 DocuScope Tagger Service
 ========================
